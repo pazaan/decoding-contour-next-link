@@ -102,6 +102,10 @@ class BayerBinaryMessage( object ):
                 return MtFindPump( stream, pumpSession )
             elif( medtronicSendType == 0x05 ):
                 return MtSendPump( stream, pumpSession )
+        elif( messageType == 0x81 ):
+            return MtPumpAck( stream )
+        elif( messageType == 0x80 ):
+            return MtPumpResponse( stream, pumpSession )
         elif( ( stream.length / 8 ) > 33 ):
             return MtStandardMessage( stream, pumpSession )
         else:
@@ -392,56 +396,109 @@ class MtSendPump( MtStandardMessage ):
     def __str__( self ):
         return "%s\nseqNo: %d, unknownByte: '%s', Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
 
-# TODO - this is doing nothing
 class MtPumpAck( MtStandardMessage ):
     @property
-    def pumpSerial( self ):
-        self.stream.bytepos = 0x2
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def pumpIdentifier( self ):
-        self.stream.bytepos = 0x5
+    def commandResponseCode( self ):
+        self.stream.bytepos = 0x23
         return self.stream.read( 'uintle:16' )
 
     @property
-    def delimiter( self ):
-        self.stream.bytepos = 0x7
-        return self.stream.read( 'uintle:24' )
+    def unknownBytes( self ):
+        self.stream.bytepos = 0x25
+        return self.stream.read( 'bytes:7' )
 
     @property
     def sequenceNumber( self ):
-        self.stream.bytepos = 0x0a
+        self.stream.bytepos = 0x2c
         return self.stream.read( 'uint:8' )
 
     @property
     def unknownByte( self ):
-        self.stream.bytepos = 0x0b
+        self.stream.bytepos = 0x2d
         return self.stream.read( 'bytes:1' )
 
+    def __init__( self, stream ):
+        MtStandardMessage.__init__( self, stream, pumpSession )
+
+        if( self.medtronicMessageSize > 4 ):
+            assert self.commandResponseCode == 1024
+        else:
+            assert self.commandResponseCode == 0
+
+    def __str__( self ):
+        if( self.medtronicMessageSize > 4 ):
+            return "%s\nseqNo: %d, unknownBytes: %s, unknownByte: %s" % ( CcittMessage.__str__(self), self.sequenceNumber, self.unknownBytes.encode('hex'), self.unknownByte.encode('hex'))
+        else:
+            return "No extra data"
+
+class MtPumpResponse( MtStandardMessage ):
     @property
-    def payloadSize( self ):
-        self.stream.bytepos = 0x0c
-        return self.stream.read( 'uintle:8' )
+    def commandResponseCode( self ):
+        self.stream.bytepos = 0x23
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def pumpSerial( self ):
+        self.stream.bytepos = 0x25
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def pumpIdentifier( self ):
+        self.stream.bytepos = 0x28
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter1( self ):
+        self.stream.bytepos = 0x2a
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def stickSerial( self ):
+        self.stream.bytepos = 0x2d
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def stickIdentifier( self ):
+        self.stream.bytepos = 0x30
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter2( self ):
+        self.stream.bytepos = 0x32
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def sequenceNumber( self ):
+        self.stream.bytepos = 0x35
+        return self.stream.read( 'uint:8' )
 
     @property
     def requestBody( self ):
         # get size here, because properties advance the stream pointer, and we want it to
         # stay set when we read the payload
-        payloadSize = self.payloadSize
-        self.stream.bytepos = 0x0d
+        payloadSize = self.medtronicMessageSize - 21
+        self.stream.bytepos = 0x36
         return self.stream.read( 'bytes:%d' % ( payloadSize ) )
 
-    def __init__( self, stream ):
+    def __init__( self, stream, pumpSession ):
         MtStandardMessage.__init__( self, stream, pumpSession )
 
-        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter == MtStandardMessage.DELIMITER
-        assert ( 0x0d + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
-        assert self.pumpSerial == pumpSession.pumpSerial
+        # Sometimes response is 1024 (for the channel init). This has different things
+        assert self.commandResponseCode == 1536 or self.commandResponseCode == 1024
+
+        if( self.commandResponseCode == 1536 ):
+            assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+            assert self.pumpSerial == pumpSession.pumpSerial
+            assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
+            assert self.stickSerial == pumpSession.stickSerial
+            assert self.delimiter1 == MtStandardMessage.DELIMITER
+            assert self.delimiter2 == MtStandardMessage.DELIMITER
 
     def __str__( self ):
-        return "seqNo: %d, unknownByte: '%s', Pump serial: %d\nHashed command? %s" % ( self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.requestBody.encode('hex'))
+        if( self.commandResponseCode == 1536 ):
+            return "%s\nseqNo: %d, Stick serial: %d, Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.stickSerial, self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
+        else:
+            return "Haven't decoding this one yet"
 
 if __name__ == '__main__':
     cap = pyshark.FileCapture( sys.argv[1] )
