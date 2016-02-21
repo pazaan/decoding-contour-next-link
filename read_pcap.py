@@ -5,274 +5,30 @@ import binascii
 import pyshark # pip install pyshark
 from bitstring import BitArray, BitStream, pack # pip install bigstring
 import crc16 # pip install crc16
+import Crypto.Cipher.AES # pip install PyCrypto
 
 INCOMING_ENDPOINT = 0x83 # This is the incoming endpoint we want data from
 OUTGOING_ENDPOINT = 0x04 # This is the outgoing endpoint we want data from
 USB_PACKET_SIZE = 60
 
-class mtInitStickMessage( object ):
-    def __init__( self, stream ):
-        self.stream = stream
+class MedtronicSession:
+    radioChannel = None
+    stickSerial = None
+    pumpSerial = None
 
-    def __str__( self ):
-        return "*** Hashed payload? %s" % ( self.stream.hex )
-
-class mtGetAttachedPumpMessage( object ):
+    # TODO - this is Lennart's KEY. Other people's keys could be different
     @property
-    def delimiter1( self ):
-        self.stream.bytepos = 0x0
-        return self.stream.read( 'uint:24' )
+    def KEY( self ):
+        return binascii.unhexlify( "57833334130906A587B7A0437BC28A69" )
 
     @property
-    def delimiter2( self ):
-        self.stream.bytepos = 0x8
-        return self.stream.read( 'uint:24' )
+    def IV( self ):
+        return binascii.unhexlify( "%s833334130906A587B7A0437BC28A69" % ( hex( self.radioChannel ).replace( r'0x', '' ) ) )
 
-    @property
-    def stickIdentifier( self ):
-        self.stream.bytepos = 0x3
-        return self.stream.read( 'uint:16' )
-
-    @property
-    def stickSerial( self ):
-        self.stream.bytepos = 0x5
-        return self.stream.read( 'uint:24' )
-
-    @property
-    def pumpIdentifier( self ):
-        self.stream.bytepos = 0x0b
-        return self.stream.read( 'uint:16' )
-
-    @property
-    def pumpSerial( self ):
-        self.stream.bytepos = 0xd
-        return self.stream.read( 'uint:24' )
-
-    @property
-    def unknownBytes( self ):
-        self.stream.bytepos = 0x10
-        return self.stream.read( 'bytes:3' ).encode( 'hex' )
-
-    def __init__( self, stream ):
-        self.stream = stream
-
-        # Response looks like this:
-        # 0023f7 0682 <stickID in Big Endian> 0023f7 45ee <pumpID in Big Endian> <Unknown bytes>
-        assert self.stickIdentifier == mtStandardMessage.STICK_IDENTIFIER
-        assert self.pumpIdentifier == mtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter1 == mtStandardMessage.DELIMITER
-        assert self.delimiter2 == mtStandardMessage.DELIMITER
-
-    def __str__( self ):
-        return "Stick serial: '%d', Pump serial: '%d', Unknown Bytes: '%s'" % ( self.stickSerial, self.pumpSerial, self.unknownBytes )
-
-class ccittMessage( object ):
-    @property
-    def payload( self ):
-        self.stream.bytepos = 0x0
-        return self.stream.read( 'bytes:%d' % ( ( self.stream.length / 8 ) - 2 ) )
-
-    @property
-    def ccitt( self ):
-        self.stream.bytepos = ( self.stream.length / 8 ) - 2
-        return self.stream.read( 'uintle:16' )
-
-    def __init__( self, stream ):
-        self.stream = stream
-
-        calcCcitt = self.makeMessageCcitt()
-        if( calcCcitt != self.ccitt ):
-            print "CRC-CCITT doesn't match. Expected '%#x', calculated '%#x'" % ( self.ccitt, calcCcitt )
-            raise Exception
-        return
-
-    def __str__( self ):
-        return self.payload.encode( 'hex' )
-
-    def makeMessageCcitt( self ):
-        crc = crc16.crc16xmodem( self.payload, 0xffff )
-        return crc & 0xffff
-
-class mtStandardMessage( ccittMessage ):
-    STICK_IDENTIFIER = 0x0682
-    PUMP_IDENTIFIER = 0x45ee
-    DELIMITER = 0x0023f7
-
-    @property
-    def header( self ):
-        self.stream.bytepos = 0x0
-        return self.stream.read( 'bytes:1' )
-
-    @property
-    def messageSize( self ):
-        self.stream.bytepos = 0x1
-        return self.stream.read( 'uint:8' )
-
-    def __init__( self, stream ):
-        ccittMessage.__init__( self, stream )
-
-        assert self.messageSize == len( self.payload )
-
-class mtFindPump( mtStandardMessage ):
-    @property
-    def sequenceNumber( self ):
-        self.stream.bytepos = 0x2
-        return self.stream.read( 'uint:8' )
-
-    @property
-    def radioChannel( self ):
-        self.stream.bytepos = 0x3
-        return self.stream.read( 'uint:8' )
-
-    @property
-    def unknownBytes( self ):
-        self.stream.bytepos = 0x4
-        return self.stream.read( 'bytes:8' )
-
-    @property
-    def stickSerial( self ):
-        self.stream.bytepos = 0x0c
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def stickIdentifier( self ):
-        self.stream.bytepos = 0x0f
-        return self.stream.read( 'uintle:16' )
-
-    @property
-    def delimiter1( self ):
-        self.stream.bytepos = 0x11
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def pumpSerial( self ):
-        self.stream.bytepos = 0x14
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def pumpIdentifier( self ):
-        self.stream.bytepos = 0x17
-        return self.stream.read( 'uintle:16' )
-
-    @property
-    def delimiter2( self ):
-        self.stream.bytepos = 0x19
-        return self.stream.read( 'uintle:24' )
-
-    def __init__( self, stream ):
-        mtStandardMessage.__init__( self, stream )
-
-        assert self.stickIdentifier == mtStandardMessage.STICK_IDENTIFIER
-        assert self.pumpIdentifier == mtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter1 == mtStandardMessage.DELIMITER
-        assert self.delimiter2 == mtStandardMessage.DELIMITER
-        # TODO - should assert stick and pump serial
-
-    def __str__( self ):
-        return "seqNo: %d, channel: %d, unknownBytes: '%s', Stick serial: %d, Pump serial: %d" % ( self.sequenceNumber, self.radioChannel, self.unknownBytes.encode('hex'), self.stickSerial, self.pumpSerial )
-
-class mtSendPump( mtStandardMessage ):
-    @property
-    def pumpSerial( self ):
-        self.stream.bytepos = 0x2
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def pumpIdentifier( self ):
-        self.stream.bytepos = 0x5
-        return self.stream.read( 'uintle:16' )
-
-    @property
-    def delimiter( self ):
-        self.stream.bytepos = 0x7
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def sequenceNumber( self ):
-        self.stream.bytepos = 0x0a
-        return self.stream.read( 'uint:8' )
-
-    @property
-    def unknownByte( self ):
-        self.stream.bytepos = 0x0b
-        return self.stream.read( 'bytes:1' )
-
-    @property
-    def payloadSize( self ):
-        self.stream.bytepos = 0x0c
-        return self.stream.read( 'uintle:8' )
-
-    @property
-    def requestBody( self ):
-        # get size here, because properties advance the stream pointer, and we want it to
-        # stay set when we read the payload
-        payloadSize = self.payloadSize
-        self.stream.bytepos = 0x0d
-        return self.stream.read( 'bytes:%d' % ( payloadSize ) )
-
-    def __init__( self, stream ):
-        mtStandardMessage.__init__( self, stream )
-
-        assert self.pumpIdentifier == mtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter == mtStandardMessage.DELIMITER
-        assert ( 0x0d + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
-        # TODO - should assert pump serial
-
-    def __str__( self ):
-        return "seqNo: %d, unknownByte: '%s', Pump serial: %d\nHashed command? %s" % ( self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.requestBody.encode('hex'))
-
-class mtPumpAck( mtStandardMessage ):
-    @property
-    def pumpSerial( self ):
-        self.stream.bytepos = 0x2
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def pumpIdentifier( self ):
-        self.stream.bytepos = 0x5
-        return self.stream.read( 'uintle:16' )
-
-    @property
-    def delimiter( self ):
-        self.stream.bytepos = 0x7
-        return self.stream.read( 'uintle:24' )
-
-    @property
-    def sequenceNumber( self ):
-        self.stream.bytepos = 0x0a
-        return self.stream.read( 'uint:8' )
-
-    @property
-    def unknownByte( self ):
-        self.stream.bytepos = 0x0b
-        return self.stream.read( 'bytes:1' )
-
-    @property
-    def payloadSize( self ):
-        self.stream.bytepos = 0x0c
-        return self.stream.read( 'uintle:8' )
-
-    @property
-    def requestBody( self ):
-        # get size here, because properties advance the stream pointer, and we want it to
-        # stay set when we read the payload
-        payloadSize = self.payloadSize
-        self.stream.bytepos = 0x0d
-        return self.stream.read( 'bytes:%d' % ( payloadSize ) )
-
-    def __init__( self, stream ):
-        mtStandardMessage.__init__( self, stream )
-
-        assert self.pumpIdentifier == mtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter == mtStandardMessage.DELIMITER
-        assert ( 0x0d + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
-        # TODO - should assert pump serial
-
-    def __str__( self ):
-        return "seqNo: %d, unknownByte: '%s', Pump serial: %d\nHashed command? %s" % ( self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.requestBody.encode('hex'))
-
-class bayerBinaryMessage( object ):
+class BayerBinaryMessage( object ):
     messageHandler = None
+    IN = 0x0
+    OUT = 0x1
 
     @property
     def header( self ):
@@ -322,6 +78,35 @@ class bayerBinaryMessage( object ):
         self.stream.bytepos = 0x21
         return self.stream.read( 'bytes:%d' % ( payloadSize ) )
 
+    @classmethod
+    def MessageFactory( cls, stream, messageDirection, pumpSession ):
+        stream.bytepos = 0x0
+        if( stream.readlist( '2*bytes:1' ) != [ 'Q', '\x03' ] ):
+            return None
+
+        stream.bytepos = 0x12
+        messageType = stream.read( 'uint:8' )
+
+        print "MESSAGE TYPE: %s, Direction: %s" % ( messageType, messageDirection )
+        if( messageType == 0x10 and messageDirection == BayerBinaryMessage.OUT ):
+            return MtInitStickMessage( stream )
+        elif( messageType == 0x10 and messageDirection == BayerBinaryMessage.IN ):
+            return CcittMessage( stream )
+        elif( messageType == 0x14 and messageDirection == BayerBinaryMessage.IN ):
+            return MtGetAttachedPumpMessage( stream )
+        elif( messageType == 0x12 ):
+            stream.bytepos = 0x21
+            medtronicSendType = stream.read( 'uint:8' )
+
+            if( medtronicSendType == 0x03 ):
+                return MtFindPump( stream, pumpSession )
+            elif( medtronicSendType == 0x05 ):
+                return MtSendPump( stream, pumpSession )
+        elif( ( stream.length / 8 ) > 33 ):
+            return MtStandardMessage( stream, pumpSession )
+        else:
+            return BayerBinaryMessage( stream )
+
     def __init__( self, stream ):
         self.stream = stream
 
@@ -342,25 +127,6 @@ class bayerBinaryMessage( object ):
         if( calcCrc != self.messageChecksum ):
             print "Message checksum doesn't match. Expected '%#x', calculated '%#x'" % ( self.messageChecksum, calcCrc )
             raise Exception
-
-        # Attach a Metronic message handler
-        if( self.messageType == 0x10 ):
-            if( self.messageSize == 32 ):
-                # The outgoing 0x10 message is not a CCITT message, and is 32 bytes long
-                self.messageHandler = mtInitStickMessage( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
-            else:
-                self.messageHandler = ccittMessage( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
-        elif ( self.messageType == 0x14 and self.messageSize > 0 ):
-            # The outgoing 0x14 message has no payload
-            self.messageHandler = mtGetAttachedPumpMessage( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
-        elif ( len( self.payload ) > 0 ):
-            if( self.messageType == 0x12 ):
-                if( self.payload[0] == '\x03' ):
-                    self.messageHandler = mtFindPump( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
-                elif( self.payload[0] == '\x05' ):
-                    self.messageHandler = mtSendPump( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
-            else:
-                self.messageHandler = mtStandardMessage( pack( 'bytes:%d' % ( len(self.payload) ), self.payload ) )
 
     def checkNullBytes( self, field ):
         if( getattr( self, field ) != 0 ):
@@ -383,66 +149,351 @@ class bayerBinaryMessage( object ):
                 payload = self.payload.encode('hex')
 
             # Binary Bayer message
-            return '%s, %s, %s, %#x, %d, %#x, %d, %#x\n%s' % ( self.header, self.pumpId, self.unknownBytes1, self.messageType, self.sequenceNumber, self.unknownBytes2, self.messageSize, self.messageChecksum, payload )
+            return '%s, %s, %s, %#x, %d, %#x, %d, %#x' % ( self.header, self.pumpId, self.unknownBytes1, self.messageType, self.sequenceNumber, self.unknownBytes2, self.messageSize, self.messageChecksum )
         else:
             return '%s' % ( self.header )
 
-    def printDecodeProgress( self ):
-        KNOWN = '\033[92m'
-        GUESS = '\033[93m'
-        UNKNOWN = '\033[91m'
-        NOCOLOUR = '\033[0m'
-        sys.stdout.write( KNOWN + self.stream.bytes[0:0x8].encode('hex') + UNKNOWN + self.stream.bytes[0x8:0x12].encode('hex') + KNOWN + self.stream.bytes[0x12:0x14].encode('hex') + GUESS + self.stream.bytes[0x15:0x18].encode('hex') + UNKNOWN + self.stream.bytes[0x17:0x1c].encode('hex') + KNOWN + self.stream.bytes[0x1c:0x1d].encode('hex') + GUESS + self.stream.bytes[0x1d:0x20].encode('hex') + KNOWN + self.stream.bytes[0x20:0x21].encode('hex') + NOCOLOUR )
+class MtInitStickMessage( BayerBinaryMessage ):
+    def __str__( self ):
+        self.stream.bytepos = 0x21
+        return "%s\n*** Hashed payload? %s\nSize: %d" % ( BayerBinaryMessage.__str__(self), self.stream.read( 'bytes:32' ).encode('hex'), ( len( self.stream ) / 8 ) - 0x21 )
 
-        #if( self.messageHandler is not None ):
-        if( False ):
-            progress = messageHandler.printDecodeProgress
-        else:
-            print
+class MtGetAttachedPumpMessage( BayerBinaryMessage ):
+    @property
+    def delimiter1( self ):
+        self.stream.bytepos = 0x21
+        return self.stream.read( 'uint:24' )
 
-cap = pyshark.FileCapture( sys.argv[1] )
+    @property
+    def delimiter2( self ):
+        self.stream.bytepos = 0x29
+        return self.stream.read( 'uint:24' )
 
-messageBuffer = BitStream()
+    @property
+    def stickIdentifier( self ):
+        self.stream.bytepos = 0x24
+        return self.stream.read( 'uint:16' )
 
-i = 0
+    @property
+    def stickSerial( self ):
+        self.stream.bytepos = 0x26
+        return self.stream.read( 'uint:24' )
 
-for packet in cap:
-    # Make sure the data is coming from one of the USB endpoints we care about.
-    # Skip anything else
-    usbEndpoint = int( packet.usb.endpoint_number, 16 )
+    @property
+    def pumpIdentifier( self ):
+        self.stream.bytepos = 0x2c
+        return self.stream.read( 'uint:16' )
 
-    if( usbEndpoint != INCOMING_ENDPOINT and
-        usbEndpoint != OUTGOING_ENDPOINT ):
-        continue
+    @property
+    def pumpSerial( self ):
+        self.stream.bytepos = 0x2e
+        return self.stream.read( 'uint:24' )
 
-    usbBuffer = BitStream('0x%s' % ( packet.data.usb_capdata.replace( ':', '' ) ) )
-    usbHeader = usbBuffer.readlist( 'bytes:3, uint:8' )
+    @property
+    def unknownBytes( self ):
+        self.stream.bytepos = 0x31
+        return self.stream.read( 'bytes:3' ).encode( 'hex' )
 
-    # Validate the header
-    if( usbEndpoint == OUTGOING_ENDPOINT and usbHeader[0].encode( 'hex' ) != '000000' ):
-        print 'Unexpected USB Header. Expected "0x000000", got "0x%s".' % ( usbHeader[0].encode( 'hex' ) )
-        raise Exception
-    if( usbEndpoint == INCOMING_ENDPOINT and usbHeader[0] != 'ABC' ):
-        print 'Unexpected USB Header. Expected "0x414243", got "0x%s".' % ( usbHeader[0].encode( 'hex' ) )
-        raise Exception
+    def __init__( self, stream ):
+        BayerBinaryMessage.__init__( self, stream )
 
-    messageBuffer.append( usbBuffer.read( usbHeader[1] * 8 ) )
+        # Response looks like this:
+        # 0023f7 0682 <stickID in Big Endian> 0023f7 45ee <pumpID in Big Endian> <Unknown bytes>
+        assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
+        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+        assert self.delimiter1 == MtStandardMessage.DELIMITER
+        assert self.delimiter2 == MtStandardMessage.DELIMITER
 
-    # Clear the messageBuffer if we have a full message
-    # TODO - we need to be able to figure out if all 60 bytes are conusumed, but it's the end of the message
-    if( usbHeader[1] < USB_PACKET_SIZE ):
-        print >> sys.stderr, 'Message %s' % ( 'OUT' if usbEndpoint == OUTGOING_ENDPOINT else 'IN' )
-        print >> sys.stderr, 'Hex: %s' % ( messageBuffer.hex )
-        # TODO - make a bayerMessage to also handle standard command sequences and ASTM messages
-        if( messageBuffer.bytes[0:2] != 'Q\x03' ):
-            print >> sys.stderr, 'String: %s\n' % ( messageBuffer.bytes )
-        else:
-            msg = bayerBinaryMessage( messageBuffer )
-            #msg.printDecodeProgress()
-            print msg
-            print
+    def __str__( self ):
+        return "%s\nStick serial: '%d', Pump serial: '%d', Unknown Bytes: '%s'" % ( BayerBinaryMessage.__str__(self), self.stickSerial, self.pumpSerial, self.unknownBytes )
 
-        messageBuffer.clear()
-        i+=1
+class CcittMessage( BayerBinaryMessage ):
+    @property
+    def ccittPayload( self ):
+        self.stream.bytepos = 0x21
+        return self.stream.read( 'bytes:%d' % ( ( self.stream.length / 8 ) - 0x21 - 2 ) )
 
-print "Processed %d messages" % ( i )
+    @property
+    def ccitt( self ):
+        self.stream.bytepos = ( self.stream.length / 8 ) - 2
+        return self.stream.read( 'uintle:16' )
+
+    def __init__( self, stream ):
+        BayerBinaryMessage.__init__( self, stream )
+
+        calcCcitt = self.makeMessageCcitt()
+        if( calcCcitt != self.ccitt ):
+            print "CRC-CCITT doesn't match. Expected '%#x', calculated '%#x'" % ( self.ccitt, calcCcitt )
+            raise Exception
+        return
+
+    def __str__( self ):
+        return "%s\nCCITT_PAYLOAD: '%s'" % ( BayerBinaryMessage.__str__(self), self.ccittPayload.encode('hex') )
+
+    def makeMessageCcitt( self ):
+        crc = crc16.crc16xmodem( self.ccittPayload, 0xffff )
+        return crc & 0xffff
+
+class MtStandardMessage( CcittMessage ):
+    STICK_IDENTIFIER = 0x0682
+    PUMP_IDENTIFIER = 0x45ee
+    DELIMITER = 0x0023f7
+
+    @property
+    def medtronicHeader( self ):
+        self.stream.bytepos = 0x21
+        return self.stream.read( 'bytes:1' )
+
+    @property
+    def medtronicMessageSize( self ):
+        self.stream.bytepos = 0x22
+        return self.stream.read( 'uint:8' )
+
+    def pad(self, x, n=16):
+        p = n - (len(x) % n)
+        return x + chr(p) * p
+
+    # Encrpytion equivalent to Java's AES/CFB/NoPadding mode
+    def encrypt( self, clear ):
+        cipher = Crypto.Cipher.AES.new(
+            key=pumpSession.KEY,
+            mode=Crypto.Cipher.AES.MODE_CFB,
+            IV=pumpSession.IV,
+            segment_size=128
+        )
+
+        encrypted = cipher.encrypt(self.pad(clear))[0:len(clear)]
+        return encrypted
+
+    # Decryption equivalent to Java's AES/CFB/NoPadding mode
+    def decrypt( self, encrypted ):
+        cipher = Crypto.Cipher.AES.new(
+            key=pumpSession.KEY,
+            mode=Crypto.Cipher.AES.MODE_CFB,
+            IV=pumpSession.IV,
+            segment_size=128
+        )
+
+        decrypted = cipher.decrypt(self.pad(encrypted))[0:len(encrypted)]
+        return decrypted
+
+    def __init__( self, stream, pumpSession ):
+        CcittMessage.__init__( self, stream )
+
+        # The medtronicMessage size includes its header and the size byte
+        assert self.medtronicMessageSize == len( self.payload ) - 2
+
+class MtFindPump( MtStandardMessage ):
+    @property
+    def sequenceNumber( self ):
+        self.stream.bytepos = 0x23
+        return self.stream.read( 'uint:8' )
+
+    @property
+    def radioChannel( self ):
+        self.stream.bytepos = 0x24
+        return self.stream.read( 'uint:8' )
+
+    @property
+    def unknownBytes( self ):
+        self.stream.bytepos = 0x25
+        return self.stream.read( 'bytes:8' )
+
+    @property
+    def stickSerial( self ):
+        self.stream.bytepos = 0x2d
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def stickIdentifier( self ):
+        self.stream.bytepos = 0x30
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter1( self ):
+        self.stream.bytepos = 0x32
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def pumpSerial( self ):
+        self.stream.bytepos = 0x35
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def pumpIdentifier( self ):
+        self.stream.bytepos = 0x38
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter2( self ):
+        self.stream.bytepos = 0x3a
+        return self.stream.read( 'uintle:24' )
+
+    def __init__( self, stream, pumpSession ):
+        MtStandardMessage.__init__( self, stream, pumpSession )
+
+        assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
+        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+        assert self.delimiter1 == MtStandardMessage.DELIMITER
+        assert self.delimiter2 == MtStandardMessage.DELIMITER
+        assert self.stickSerial == pumpSession.stickSerial
+        assert self.pumpSerial == pumpSession.pumpSerial
+
+    def __str__( self ):
+        return "%s\nseqNo: %d, channel: %d, unknownBytes: '%s', Stick serial: %d, Pump serial: %d" % ( CcittMessage.__str__(self), self.sequenceNumber, self.radioChannel, self.unknownBytes.encode('hex'), self.stickSerial, self.pumpSerial )
+
+class MtSendPump( MtStandardMessage ):
+    @property
+    def pumpSerial( self ):
+        self.stream.bytepos = 0x23
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def pumpIdentifier( self ):
+        self.stream.bytepos = 0x26
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter( self ):
+        self.stream.bytepos = 0x28
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def sequenceNumber( self ):
+        self.stream.bytepos = 0x2b
+        return self.stream.read( 'uint:8' )
+
+    @property
+    def unknownByte( self ):
+        self.stream.bytepos = 0x2c
+        return self.stream.read( 'bytes:1' )
+
+    @property
+    def payloadSize( self ):
+        self.stream.bytepos = 0x2d
+        return self.stream.read( 'uintle:8' )
+
+    @property
+    def requestBody( self ):
+        # get size here, because properties advance the stream pointer, and we want it to
+        # stay set when we read the payload
+        payloadSize = self.payloadSize
+        self.stream.bytepos = 0x2e
+        return self.stream.read( 'bytes:%d' % ( payloadSize ) )
+
+    def __init__( self, stream, pumpSession ):
+        MtStandardMessage.__init__( self, stream, pumpSession )
+
+        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+        assert self.delimiter == MtStandardMessage.DELIMITER
+        assert ( 0x2e + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
+        assert self.pumpSerial == pumpSession.pumpSerial
+
+    def __str__( self ):
+        return "%s\nseqNo: %d, unknownByte: '%s', Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
+
+# TODO - this is doing nothing
+class MtPumpAck( MtStandardMessage ):
+    @property
+    def pumpSerial( self ):
+        self.stream.bytepos = 0x2
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def pumpIdentifier( self ):
+        self.stream.bytepos = 0x5
+        return self.stream.read( 'uintle:16' )
+
+    @property
+    def delimiter( self ):
+        self.stream.bytepos = 0x7
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def sequenceNumber( self ):
+        self.stream.bytepos = 0x0a
+        return self.stream.read( 'uint:8' )
+
+    @property
+    def unknownByte( self ):
+        self.stream.bytepos = 0x0b
+        return self.stream.read( 'bytes:1' )
+
+    @property
+    def payloadSize( self ):
+        self.stream.bytepos = 0x0c
+        return self.stream.read( 'uintle:8' )
+
+    @property
+    def requestBody( self ):
+        # get size here, because properties advance the stream pointer, and we want it to
+        # stay set when we read the payload
+        payloadSize = self.payloadSize
+        self.stream.bytepos = 0x0d
+        return self.stream.read( 'bytes:%d' % ( payloadSize ) )
+
+    def __init__( self, stream ):
+        MtStandardMessage.__init__( self, stream, pumpSession )
+
+        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+        assert self.delimiter == MtStandardMessage.DELIMITER
+        assert ( 0x0d + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
+        assert self.pumpSerial == pumpSession.pumpSerial
+
+    def __str__( self ):
+        return "seqNo: %d, unknownByte: '%s', Pump serial: %d\nHashed command? %s" % ( self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.requestBody.encode('hex'))
+
+if __name__ == '__main__':
+    cap = pyshark.FileCapture( sys.argv[1] )
+
+    messageBuffer = BitStream()
+
+    i = 0
+    pumpSession = MedtronicSession()
+
+    for packet in cap:
+        # Make sure the data is coming from one of the USB endpoints we care about.
+        # Skip anything else
+        usbEndpoint = int( packet.usb.endpoint_number, 16 )
+
+        if( usbEndpoint != INCOMING_ENDPOINT and
+            usbEndpoint != OUTGOING_ENDPOINT ):
+            continue
+
+        usbBuffer = BitStream('0x%s' % ( packet.data.usb_capdata.replace( ':', '' ) ) )
+        usbHeader = usbBuffer.readlist( 'bytes:3, uint:8' )
+
+        # Validate the header
+        if( usbEndpoint == OUTGOING_ENDPOINT and usbHeader[0].encode( 'hex' ) != '000000' ):
+            print 'Unexpected USB Header. Expected "0x000000", got "0x%s".' % ( usbHeader[0].encode( 'hex' ) )
+            raise Exception
+        if( usbEndpoint == INCOMING_ENDPOINT and usbHeader[0] != 'ABC' ):
+            print 'Unexpected USB Header. Expected "0x414243", got "0x%s".' % ( usbHeader[0].encode( 'hex' ) )
+            raise Exception
+
+        messageBuffer.append( usbBuffer.read( usbHeader[1] * 8 ) )
+
+        # Clear the messageBuffer if we have a full message
+        # TODO - we need to be able to figure out if all 60 bytes are conusumed, but it's the end of the message
+        if( usbHeader[1] < USB_PACKET_SIZE ):
+            print >> sys.stderr, 'Message %s' % ( 'OUT' if usbEndpoint == OUTGOING_ENDPOINT else 'IN' )
+            print >> sys.stderr, 'Hex: %s' % ( messageBuffer.hex )
+            # TODO - make a bayerMessage to also handle standard command sequences and ASTM messages
+            if( messageBuffer.bytes[0:2] != 'Q\x03' ):
+                print >> sys.stderr, 'String: %s\n' % ( messageBuffer.bytes )
+            else:
+                msg = BayerBinaryMessage.MessageFactory( messageBuffer,
+                    BayerBinaryMessage.OUT if usbEndpoint == OUTGOING_ENDPOINT else BayerBinaryMessage.IN, pumpSession )
+                if( msg is not None ):
+                    if( isinstance( msg, MtGetAttachedPumpMessage ) ):
+                        pumpSession.pumpSerial = msg.pumpSerial
+                        pumpSession.stickSerial = msg.stickSerial
+                    elif( isinstance( msg, MtFindPump ) ):
+                        pumpSession.radioChannel = msg.radioChannel
+                    print msg
+                    print
+
+            messageBuffer.clear()
+            i+=1
+
+    print "Processed %d messages" % ( i )
