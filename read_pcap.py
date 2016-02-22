@@ -23,7 +23,7 @@ class MedtronicSession:
 
     @property
     def IV( self ):
-        return binascii.unhexlify( "%s833334130906A587B7A0437BC28A69" % ( hex( self.radioChannel ).replace( r'0x', '' ) ) )
+        return binascii.unhexlify( "{0:02x}833334130906A587B7A0437BC28A69".format( self.radioChannel ) )
 
 class BayerBinaryMessage( object ):
     messageHandler = None
@@ -483,8 +483,8 @@ class MtPumpResponse( MtStandardMessage ):
     def __init__( self, stream, pumpSession ):
         MtStandardMessage.__init__( self, stream, pumpSession )
 
-        # Sometimes response is 1024 (for the channel init). This has different things
-        assert self.commandResponseCode == 1536 or self.commandResponseCode == 1024
+        # Sometimes response is 1024 (for the channel init) of 0000 (for a failed negotiation). This has different things
+        assert self.commandResponseCode == 0 or self.commandResponseCode == 1536 or self.commandResponseCode == 1024
 
         if( self.commandResponseCode == 1536 ):
             assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
@@ -498,7 +498,7 @@ class MtPumpResponse( MtStandardMessage ):
         if( self.commandResponseCode == 1536 ):
             return "%s\nseqNo: %d, Stick serial: %d, Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.stickSerial, self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
         else:
-            return "Haven't decoding this one yet"
+            return "Haven't decoded this one yet"
 
 if __name__ == '__main__':
     cap = pyshark.FileCapture( sys.argv[1] )
