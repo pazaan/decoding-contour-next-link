@@ -87,27 +87,27 @@ class BayerBinaryMessage( object ):
         stream.bytepos = 0x12
         messageType = stream.read( 'uint:8' )
 
-        print "MESSAGE TYPE: %s, Direction: %s" % ( messageType, messageDirection )
+        print "MESSAGE TYPE: %s, Direction: %s" % ( hex(messageType), messageDirection )
         if( messageType == 0x10 and messageDirection == BayerBinaryMessage.OUT ):
-            return MtInitStickMessage( stream )
+            return OpenConnectionRequest( stream )
         elif( messageType == 0x10 and messageDirection == BayerBinaryMessage.IN ):
-            return CcittMessage( stream )
+            return MedtronicMessage( stream, pumpSession )
         elif( messageType == 0x14 and messageDirection == BayerBinaryMessage.IN ):
-            return MtGetAttachedPumpMessage( stream )
+            return ReadInfoResponse( stream )
         elif( messageType == 0x12 ):
             stream.bytepos = 0x21
             medtronicSendType = stream.read( 'uint:8' )
 
             if( medtronicSendType == 0x03 ):
-                return MtFindPump( stream, pumpSession )
+                return NegotiateChannel( stream, pumpSession )
             elif( medtronicSendType == 0x05 ):
-                return MtSendPump( stream, pumpSession )
+                return SendMessageRequest( stream, pumpSession )
         elif( messageType == 0x81 ):
-            return MtPumpAck( stream )
+            return SendMessageResponse( stream )
         elif( messageType == 0x80 ):
-            return MtPumpResponse( stream, pumpSession )
+            return ReceiveMessage( stream, pumpSession )
         elif( ( stream.length / 8 ) > 33 ):
-            return MtStandardMessage( stream, pumpSession )
+            return MedtronicMessage( stream, pumpSession )
         else:
             return BayerBinaryMessage( stream )
 
@@ -157,20 +157,15 @@ class BayerBinaryMessage( object ):
         else:
             return '%s' % ( self.header )
 
-class MtInitStickMessage( BayerBinaryMessage ):
+class OpenConnectionRequest( BayerBinaryMessage ):
     def __str__( self ):
         self.stream.bytepos = 0x21
         return "%s\n*** Hashed payload? %s\nSize: %d" % ( BayerBinaryMessage.__str__(self), self.stream.read( 'bytes:32' ).encode('hex'), ( len( self.stream ) / 8 ) - 0x21 )
 
-class MtGetAttachedPumpMessage( BayerBinaryMessage ):
+class ReadInfoResponse( BayerBinaryMessage ):
     @property
     def delimiter1( self ):
         self.stream.bytepos = 0x21
-        return self.stream.read( 'uint:24' )
-
-    @property
-    def delimiter2( self ):
-        self.stream.bytepos = 0x29
         return self.stream.read( 'uint:24' )
 
     @property
@@ -181,6 +176,11 @@ class MtGetAttachedPumpMessage( BayerBinaryMessage ):
     @property
     def stickSerial( self ):
         self.stream.bytepos = 0x26
+        return self.stream.read( 'uint:24' )
+
+    @property
+    def delimiter2( self ):
+        self.stream.bytepos = 0x29
         return self.stream.read( 'uint:24' )
 
     @property
@@ -203,45 +203,27 @@ class MtGetAttachedPumpMessage( BayerBinaryMessage ):
 
         # Response looks like this:
         # 0023f7 0682 <stickID in Big Endian> 0023f7 45ee <pumpID in Big Endian> <Unknown bytes>
-        assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
-        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter1 == MtStandardMessage.DELIMITER
-        assert self.delimiter2 == MtStandardMessage.DELIMITER
+        assert self.stickIdentifier == MedtronicMessage.STICK_IDENTIFIER
+        assert self.pumpIdentifier == MedtronicMessage.PUMP_IDENTIFIER
+        assert self.delimiter1 == MedtronicMessage.DELIMITER
+        assert self.delimiter2 == MedtronicMessage.DELIMITER
 
     def __str__( self ):
         return "%s\nStick serial: '%d', Pump serial: '%d', Unknown Bytes: '%s'" % ( BayerBinaryMessage.__str__(self), self.stickSerial, self.pumpSerial, self.unknownBytes )
 
-class CcittMessage( BayerBinaryMessage ):
+class MedtronicMessage( BayerBinaryMessage ):
+    STICK_IDENTIFIER = 0x0682
+    PUMP_IDENTIFIER = 0x45ee
+    DELIMITER = 0x0023f7
+
     @property
-    def ccittPayload( self ):
-        self.stream.bytepos = 0x21
-        return self.stream.read( 'bytes:%d' % ( ( self.stream.length / 8 ) - 0x21 - 2 ) )
+    def medtronicMessage( self ):
+        return self.payload[0:-2]
 
     @property
     def ccitt( self ):
         self.stream.bytepos = ( self.stream.length / 8 ) - 2
         return self.stream.read( 'uintle:16' )
-
-    def __init__( self, stream ):
-        BayerBinaryMessage.__init__( self, stream )
-
-        calcCcitt = self.makeMessageCcitt()
-        if( calcCcitt != self.ccitt ):
-            print "CRC-CCITT doesn't match. Expected '%#x', calculated '%#x'" % ( self.ccitt, calcCcitt )
-            raise Exception
-        return
-
-    def __str__( self ):
-        return "%s\nCCITT_PAYLOAD: '%s'" % ( BayerBinaryMessage.__str__(self), self.ccittPayload.encode('hex') )
-
-    def makeMessageCcitt( self ):
-        crc = crc16.crc16xmodem( self.ccittPayload, 0xffff )
-        return crc & 0xffff
-
-class MtStandardMessage( CcittMessage ):
-    STICK_IDENTIFIER = 0x0682
-    PUMP_IDENTIFIER = 0x45ee
-    DELIMITER = 0x0023f7
 
     @property
     def medtronicHeader( self ):
@@ -253,8 +235,12 @@ class MtStandardMessage( CcittMessage ):
         self.stream.bytepos = 0x22
         return self.stream.read( 'uint:8' )
 
-    def pad(self, x, n=16):
-        p = n - (len(x) % n)
+    def makeMessageCcitt( self ):
+        crc = crc16.crc16xmodem( self.medtronicMessage, 0xffff )
+        return crc & 0xffff
+
+    def pad( self, x, n = 16 ):
+        p = n - ( len( x ) % n )
         return x + chr(p) * p
 
     # Encrpytion equivalent to Java's AES/CFB/NoPadding mode
@@ -282,12 +268,21 @@ class MtStandardMessage( CcittMessage ):
         return decrypted
 
     def __init__( self, stream, pumpSession ):
-        CcittMessage.__init__( self, stream )
+        BayerBinaryMessage.__init__( self, stream )
+
+        calcCcitt = self.makeMessageCcitt()
+        if( calcCcitt != self.ccitt ):
+            print "CRC-CCITT doesn't match. Expected '%#x', calculated '%#x'" % ( self.ccitt, calcCcitt )
+            raise Exception
+        return
 
         # The medtronicMessage size includes its header and the size byte
         assert self.medtronicMessageSize == len( self.payload ) - 2
 
-class MtFindPump( MtStandardMessage ):
+    def __str__( self ):
+        return "%s\nMedtronic Payload: '%s'" % ( BayerBinaryMessage.__str__(self), self.medtronicMessage.encode('hex') )
+
+class NegotiateChannel( MedtronicMessage ):
     @property
     def sequenceNumber( self ):
         self.stream.bytepos = 0x23
@@ -334,19 +329,19 @@ class MtFindPump( MtStandardMessage ):
         return self.stream.read( 'uintle:24' )
 
     def __init__( self, stream, pumpSession ):
-        MtStandardMessage.__init__( self, stream, pumpSession )
+        MedtronicMessage.__init__( self, stream, pumpSession )
 
-        assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
-        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter1 == MtStandardMessage.DELIMITER
-        assert self.delimiter2 == MtStandardMessage.DELIMITER
+        assert self.stickIdentifier == MedtronicMessage.STICK_IDENTIFIER
+        assert self.pumpIdentifier == MedtronicMessage.PUMP_IDENTIFIER
+        assert self.delimiter1 == MedtronicMessage.DELIMITER
+        assert self.delimiter2 == MedtronicMessage.DELIMITER
         assert self.stickSerial == pumpSession.stickSerial
         assert self.pumpSerial == pumpSession.pumpSerial
 
     def __str__( self ):
-        return "%s\nseqNo: %d, channel: %d, unknownBytes: '%s', Stick serial: %d, Pump serial: %d" % ( CcittMessage.__str__(self), self.sequenceNumber, self.radioChannel, self.unknownBytes.encode('hex'), self.stickSerial, self.pumpSerial )
+        return "%s\nseqNo: %d, channel: %d, unknownBytes: '%s', Stick serial: %d, Pump serial: %d" % ( MedtronicMessage.__str__(self), self.sequenceNumber, self.radioChannel, self.unknownBytes.encode('hex'), self.stickSerial, self.pumpSerial )
 
-class MtSendPump( MtStandardMessage ):
+class SendMessageRequest( MedtronicMessage ):
     @property
     def pumpSerial( self ):
         self.stream.bytepos = 0x23
@@ -386,17 +381,17 @@ class MtSendPump( MtStandardMessage ):
         return self.stream.read( 'bytes:%d' % ( payloadSize ) )
 
     def __init__( self, stream, pumpSession ):
-        MtStandardMessage.__init__( self, stream, pumpSession )
+        MedtronicMessage.__init__( self, stream, pumpSession )
 
-        assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
-        assert self.delimiter == MtStandardMessage.DELIMITER
+        assert self.pumpIdentifier == MedtronicMessage.PUMP_IDENTIFIER
+        assert self.delimiter == MedtronicMessage.DELIMITER
         assert ( 0x2e + self.payloadSize ) == ( ( self.stream.length / 8 ) - 2 ) # minus 2 bytes for the CCITT
         assert self.pumpSerial == pumpSession.pumpSerial
 
     def __str__( self ):
-        return "%s\nseqNo: %d, unknownByte: '%s', Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
+        return "%s\nseqNo: %d, unknownByte: '%s', Pump serial: %d\nDecrypted Payload: '%s'" % ( MedtronicMessage.__str__(self), self.sequenceNumber, self.unknownByte.encode('hex'), self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
 
-class MtPumpAck( MtStandardMessage ):
+class SendMessageResponse( MedtronicMessage ):
     @property
     def commandResponseCode( self ):
         self.stream.bytepos = 0x23
@@ -418,7 +413,7 @@ class MtPumpAck( MtStandardMessage ):
         return self.stream.read( 'bytes:1' )
 
     def __init__( self, stream ):
-        MtStandardMessage.__init__( self, stream, pumpSession )
+        MedtronicMessage.__init__( self, stream, pumpSession )
 
         if( self.medtronicMessageSize > 4 ):
             assert self.commandResponseCode == 1024
@@ -427,11 +422,11 @@ class MtPumpAck( MtStandardMessage ):
 
     def __str__( self ):
         if( self.medtronicMessageSize > 4 ):
-            return "%s\nseqNo: %d, unknownBytes: %s, unknownByte: %s" % ( CcittMessage.__str__(self), self.sequenceNumber, self.unknownBytes.encode('hex'), self.unknownByte.encode('hex'))
+            return "%s\nseqNo: %d, unknownBytes: %s, unknownByte: %s" % ( MedtronicMessage.__str__(self), self.sequenceNumber, self.unknownBytes.encode('hex'), self.unknownByte.encode('hex'))
         else:
             return "No extra data"
 
-class MtPumpResponse( MtStandardMessage ):
+class ReceiveMessage( MedtronicMessage ):
     @property
     def commandResponseCode( self ):
         self.stream.bytepos = 0x23
@@ -470,33 +465,38 @@ class MtPumpResponse( MtStandardMessage ):
     @property
     def sequenceNumber( self ):
         self.stream.bytepos = 0x35
-        return self.stream.read( 'uint:8' )
+        return self.stream.read( 'uintle:24' )
+
+    @property
+    def payloadSize( self ):
+        self.stream.bytepos = 0x38
+        return self.stream.read( 'uintle:8' )
 
     @property
     def requestBody( self ):
         # get size here, because properties advance the stream pointer, and we want it to
         # stay set when we read the payload
-        payloadSize = self.medtronicMessageSize - 21
-        self.stream.bytepos = 0x36
+        payloadSize = self.payloadSize
+        self.stream.bytepos = 0x39
         return self.stream.read( 'bytes:%d' % ( payloadSize ) )
 
     def __init__( self, stream, pumpSession ):
-        MtStandardMessage.__init__( self, stream, pumpSession )
+        MedtronicMessage.__init__( self, stream, pumpSession )
 
         # Sometimes response is 1024 (for the channel init) of 0000 (for a failed negotiation). This has different things
         assert self.commandResponseCode == 0 or self.commandResponseCode == 1536 or self.commandResponseCode == 1024
 
         if( self.commandResponseCode == 1536 ):
-            assert self.pumpIdentifier == MtStandardMessage.PUMP_IDENTIFIER
+            assert self.pumpIdentifier == MedtronicMessage.PUMP_IDENTIFIER
             assert self.pumpSerial == pumpSession.pumpSerial
-            assert self.stickIdentifier == MtStandardMessage.STICK_IDENTIFIER
+            assert self.stickIdentifier == MedtronicMessage.STICK_IDENTIFIER
             assert self.stickSerial == pumpSession.stickSerial
-            assert self.delimiter1 == MtStandardMessage.DELIMITER
-            assert self.delimiter2 == MtStandardMessage.DELIMITER
+            assert self.delimiter1 == MedtronicMessage.DELIMITER
+            assert self.delimiter2 == MedtronicMessage.DELIMITER
 
     def __str__( self ):
         if( self.commandResponseCode == 1536 ):
-            return "%s\nseqNo: %d, Stick serial: %d, Pump serial: %d\nDecrpytped Payload: '%s'" % ( CcittMessage.__str__(self), self.sequenceNumber, self.stickSerial, self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
+            return "%s\nseqNo: %d, Stick serial: %d, Pump serial: %d\nDecrypted Payload: '%s'" % ( MedtronicMessage.__str__(self), self.sequenceNumber, self.stickSerial, self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
         else:
             return "Haven't decoded this one yet"
 
@@ -542,10 +542,10 @@ if __name__ == '__main__':
                 msg = BayerBinaryMessage.MessageFactory( messageBuffer,
                     BayerBinaryMessage.OUT if usbEndpoint == OUTGOING_ENDPOINT else BayerBinaryMessage.IN, pumpSession )
                 if( msg is not None ):
-                    if( isinstance( msg, MtGetAttachedPumpMessage ) ):
+                    if( isinstance( msg, ReadInfoResponse ) ):
                         pumpSession.pumpSerial = msg.pumpSerial
                         pumpSession.stickSerial = msg.stickSerial
-                    elif( isinstance( msg, MtFindPump ) ):
+                    elif( isinstance( msg, NegotiateChannel ) ):
                         pumpSession.radioChannel = msg.radioChannel
                     print msg
                     print
