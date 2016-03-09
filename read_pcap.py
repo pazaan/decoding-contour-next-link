@@ -6,6 +6,7 @@ import pyshark # pip install pyshark
 from bitstring import BitArray, BitStream, pack # pip install bigstring
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
+import argparse
 
 INCOMING_ENDPOINT = 0x83 # This is the incoming endpoint we want data from
 OUTGOING_ENDPOINT = 0x04 # This is the outgoing endpoint we want data from
@@ -15,15 +16,18 @@ class MedtronicSession:
     radioChannel = None
     stickSerial = None
     pumpSerial = None
+    hexKey = None
 
-    # TODO - this is Lennart's KEY. Other people's keys could be different
+    def __init__( self, hexKey ):
+        self.hexKey = hexKey
+
     @property
     def KEY( self ):
-        return binascii.unhexlify( "57833334130906A587B7A0437BC28A69" )
+        return binascii.unhexlify( self.hexKey )
 
     @property
     def IV( self ):
-        return binascii.unhexlify( "{0:02x}833334130906A587B7A0437BC28A69".format( self.radioChannel ) )
+        return binascii.unhexlify( "{0:02x}{1}".format( self.radioChannel, self.hexKey[2:] ) )
 
 class BayerBinaryMessage( object ):
     messageHandler = None
@@ -501,12 +505,17 @@ class ReceiveMessage( MedtronicMessage ):
             return "Haven't decoded this one yet"
 
 if __name__ == '__main__':
-    cap = pyshark.FileCapture( sys.argv[1] )
+    parser = argparse.ArgumentParser()
+    parser.add_argument( 'capture_file' )
+    parser.add_argument( 'encyption_key' )
+    args = parser.parse_args()
+
+    cap = pyshark.FileCapture( args.capture_file )
 
     messageBuffer = BitStream()
 
     i = 0
-    pumpSession = MedtronicSession()
+    pumpSession = MedtronicSession( args.encyption_key )
 
     for packet in cap:
         # Make sure the data is coming from one of the USB endpoints we care about.
