@@ -30,7 +30,6 @@ class MedtronicSession:
         return binascii.unhexlify( "{0:02x}{1}".format( self.radioChannel, self.hexKey[2:] ) )
 
 class BayerBinaryMessage( object ):
-    messageHandler = None
     IN = 0x0
     OUT = 0x1
 
@@ -150,12 +149,6 @@ class BayerBinaryMessage( object ):
 
     def __str__( self ):
         if( self.header == [ 'Q', '\x03' ] ):
-            # If we have an attached message handler, use it's string method instead
-            if( self.messageHandler is not None ):
-                payload = self.messageHandler
-            else:
-                payload = self.payload.encode('hex')
-
             # Binary Bayer message
             return '%s, %s, %s, %#x, %d, %#x, %d, %#x' % ( self.header, self.pumpId, self.unknownBytes1, self.messageType, self.sequenceNumber, self.unknownBytes2, self.messageSize, self.messageChecksum )
         else:
@@ -164,7 +157,7 @@ class BayerBinaryMessage( object ):
 class OpenConnectionRequest( BayerBinaryMessage ):
     def __str__( self ):
         self.stream.bytepos = 0x21
-        return "%s\n*** Hashed payload? %s\nSize: %d" % ( BayerBinaryMessage.__str__(self), self.stream.read( 'bytes:32' ).encode('hex'), ( len( self.stream ) / 8 ) - 0x21 )
+        return "%s\nOpen HMAC: %s" % ( BayerBinaryMessage.__str__(self), self.stream.read( 'bytes:32' ).encode('hex') )
 
 class ReadInfoResponse( BayerBinaryMessage ):
     @property
