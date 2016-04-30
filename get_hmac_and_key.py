@@ -9,6 +9,7 @@ import sys
 import getpass
 import argparse
 import logging # To make javaobj's logger be quiet
+from read_minimed_next24 import Config
 
 class CareLinkRequest( javaobj.JavaObjectMarshaller ):
     def __init__( self ):
@@ -49,6 +50,9 @@ if __name__ == '__main__':
     parser.add_argument( 'serial' )
     args = parser.parse_args()
 
+    # set up the sqlite3 database if required...
+    config = Config( args.serial )
+
     password = getpass.getpass( 'Enter the password for the CareLink user {0}: '.format( args.username ) )
 
     payload = {
@@ -70,7 +74,6 @@ if __name__ == '__main__':
         )
 
         hmac = request.decodeResponse( response.raw.read() )
-        print( 'HMAC: {0}'.format( hmac ) )
 
         request = CareLinkKeyRequest()
         data = request.buildRequest( '6213-{0}'.format( args.serial ) )
@@ -82,4 +85,8 @@ if __name__ == '__main__':
         )
 
         ( int1, key, count ) = request.decodeResponse( response.raw.read() )
+
+        config.hmac = hmac
+        config.key = key
+        print( 'HMAC: {0}'.format( hmac ) )
         print( 'KEY: {0}'.format( key ) )
