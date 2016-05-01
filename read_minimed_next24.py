@@ -333,7 +333,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def tempBasalPercentage( self ):
-        return int( struct.unpack( '>B', self.responsePayload[0x23:0x23] )[0] )
+        return int( struct.unpack( '>B', self.responsePayload[0x23:0x24] )[0] )
 
     @property
     def tempBasalMinutesRemaining( self ):
@@ -341,11 +341,11 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def batteryLevelPercentage( self ):
-        return int( struct.unpack( '>B', self.responsePayload[0x2a:0x2a] )[0] )
+        return int( struct.unpack( '>B', self.responsePayload[0x2a:0x2b] )[0] )
 
     @property
     def insulinUnitsRemaining( self ):
-        return int( struct.unpack( '>I', self.responsePayload[0x2b:0x2f] )[0] )
+        return int( struct.unpack( '>I', self.responsePayload[0x2b:0x2f] )[0] ) / 10000
 
     @property
     def activeInsulin( self ):
@@ -354,6 +354,26 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     @property
     def sensorBGL( self ):
         return int( struct.unpack( '>H', self.responsePayload[53:55] )[0] )
+
+    @property
+    def trendArrow( self ):
+        status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+        if status == 0x60:
+            return "No arrows"
+        elif status == 0xc0:
+            return "3 arrows up"
+        elif status == 0xa0:
+            return "2 arrows up"
+        elif status == 0x80:
+            return "1 arrow up"
+        elif status == 0x40:
+            return "1 arrow down"
+        elif status == 0x20:
+            return "2 arrows down"
+        elif status == 0x00:
+            return "3 arrows down"
+        else:
+            return "Unknown trend"
 
     @property
     def sensorBGLTimestamp( self ):
@@ -668,5 +688,9 @@ if __name__ == '__main__':
     print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
         status.sensorBGL / 18.016,
         time.strftime( "%a, %d %b %Y %H:%M:%S +0000", status.sensorBGLTimestamp ) )
+    print "BGL trend: {0}".format( status.trendArrow )
+    print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
+    print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
+    print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
     #print binascii.hexlify( mt.getTempBasalStatus().responsePayload )
     #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
