@@ -1,0 +1,179 @@
+Negotiation with no pump in range:
+031c011400000007070000027a1c108206f72300952410ee45f72300 (20)
+031c010e00000007070000027a1c108206f72300952410ee45f72300 (14) 2420
+031c011100000007070000027a1c108206f72300952410ee45f72300 (17) 2435
+031c011400000007070000027a1c108206f72300952410ee45f72300 (20) 2450
+031c011700000007070000027a1c108206f72300952410ee45f72300 (23) 2465
+031c011a00000007070000027a1c108206f72300952410ee45f72300 (26) 2480
+
+http://www.hindawi.com/journals/ijdsn/2011/912152.fig.006.jpg
+
+Multi-packet 0x80 messages:
+55 7d 0006 952410 ee45 f72300 7a1c10 8206 f72300 1d 2f0465a69765e456ef8a468769d45d15bc8844d01878117b7dc12b460c182860e7081fcac4fca7bff6b262b21651ebfca00fb92da694fcda46e38f7bf6b4ae87b71d9ab1985717d6033f2b2afe5caf79d4ff004c32385237468ee13b076d094a7689b79cbe487c10
+55 7d 0006 952410 ee45 f72300 7a1c10 8206 f72300 1e 2f0465a19765e457ddb07db05ce51c529b184578112c7e79e55a2c7889637ee71cab6ef9b1c96ecb7cce432a11728adab439c4605ac0fcac381183926f0a2347a8a61d58e2a09c30ab058fe296ffcf5e327e1709cd20e9edf437bc5764da94b6fc22807653109472
+55 7d 0006 952410 ee45 f72300 7a1c10 8206 f72300 1f 320465a09765e454ec96cab568ccad5b37e3271082bf083896c5585ae5000817567998e0942f6f156eb2962ad4eec5a3b9eb68f06d12178550534c5f82c8400808c35b2d144835073bf46a2fac7a0e2d23cbe60f3e5c80233e0b3331afc5c9cb0d0a3eba12915472
+55 7d 0006 952410 ee45 f72300 7a1c10 8206 f72300 20 320465a39765e455f806c28c978a4610bd80cabe270ace7b0e230ad878f8d673be2c8979f65e10da071f15d9b1be51e33092d9fb49276f75100fc095fe433307b6473dd1961ccd62fe1b446e690c705dfd119be6239208c175bc6b911c49dac7abedaa6e85cd6a67
+55 23 0006 952410 ee45 f72300 7a1c10 8206 f72300 21 32040ba29765e45294954487acc0
+
+PassthroughCommands:
+0x12 = SEND_MESSAGE
+0x10 = OPEN_CONNECTION
+0x11 = CLOSE_CONNECTION
+0x14 = READ_INFO
+0x16 = REQUEST_LINK_KEY
+0x17 = SEND_LINK_KEY
+
+Medtronic Messages:
+00FE = ACK End Multipacket Command
+00FE = ACK Set Link Key Command
+00FE = ACK Start Multipacket Command
+0112 = Read Pump Status Request
+0114 = Read Preset Boluses Request
+0115 = Read Preset Temp Basals Request
+0116 = Read Basal Pattern Request
+0121 = Read Preset Boluses Response
+0122 = Read Preset Temp Basals Response
+0123 = Read Basal Pattern Response
+012B = Read Bolus Wizard Carb Ratios Request
+012C = Read Bolus Wizard Carb Ratios Response
+012E = Read Bolus Wizard Sensitivity Factors Request
+012F = Read Bolus Wizard Sensitivity Factors Response
+0131 = Read Bolus Wizard BG Targets Request
+0132 = Read Bolus Wizard BG Targets Response
+0134 = Read Timed Notifications Request
+0135 = Read Timed Notifications Response
+0138 = Read Basic NGP Parameters Request
+0139 = Read Basic NGP Parameters Response
+013C = Read Pump Status Response
+0200 = Device Characteristics Request
+0201 = Device Characteristics Response
+020B = Read Glucose Sensor Settings Request
+020C = Read Glucose Sensor Settings Response
+0211 = Read Low Glucose Sensor Settings Request
+0212 = Read Low Glucose Sensor Settings Response
+0215 = Read High Glucose Sensor Settings Request
+0216 = Read High Glucose Sensor Settings Response
+0302 = Read Trace History
+0304 = Read History
+030A = End of History Transmission
+030C = Read History Info
+030D = Read History Info Response
+0403 = Time Request
+0407 = Time Response
+040D = End Node Device Initilization Response
+0412 = Begin Extended High Speed Mode Session
+0412 = End Extended High Speed Mode Session
+FF00 = Initiate Multipacket Transfer Command
+FF01 = Multipacket Segment Transmission Command
+
+Read Basal Pattern Response:
+0e 0123 01 05 00000dac00 00000fa006 0000138810 0000109a18 00000ea628 9fa4
+12:00 - 03:00 - 0.375
+03:00 - 08:00 - 0.425
+08:00 - 12:00 - 0.5
+12:00 - 08:00 - 0.4
+08:00 - 12:00 - 0.375
+
+0f 0123 02 00 bbb5
+
+0e 0123 01 04 0000128e 00 00001482 10 0000109a 18 00000fa0 28 d837 (201602130942)
+12:00 - 08:00 - 0.475
+0e 0123 01 04 0000128e 00 00001482 11 0000109a 18 00000fa0 28 007e (201602130947)
+12:00 - 08:30 - 0.475
+0e 0123 01 04 00001388 00 00001482 10 0000109a 18 00000fa0 28 4a4a (201602130952)
+12:00 - 08:00 - 0.500
+0e 0123 01 04 0000128e 00 00001482 10 0000109a 18 00000fa0 28 d837 (201602130956)
+12:00 - 08:00 - 0.475
+
+Step-Name = uuuuuu.kksssk, captureResult = commPortUsed = null, devicePortReader = null, deviceReaderNGP = Medtronic Next Generation Pump s/n=NG1057941H, link=ComLinkNinja3 [m_bayerUSB=uuuuuu.aaaaga@1eef706f, m_usbComm=USB Communications using uuuuuu.aaaaga@1eef706f, version 1.1, m_linkMACID=[122, 28, 16, 130, 6, 247, 35, 0], m_pumpMACID=[149, 36, 16, 238, 69, 247, 35, 0], m_deviceInfo=model = , sn = , fw = , clock = null, deviceClockBytes = , m_pumpSerialNumber=NG1057941H, m_linkSerialNumber=BG1055866B, m_BGMSerialNumber=1055866, m_isAssociated=true], deviceInitialized = true, serverTimeAtDeviceRead = null, clientTimeAtDeviceRead = null, snapshotData = 0, wasCancelled = false, deviceException = null, percentComplete = 1, acquireDataStartPercentComplete = null, phase = 4, state = 1, previousPhase = 0, retryCount = 0, startTimeMS = 1457249452158, readTimeSec = 0
+
+[122, 28, 16, 130, 6, 247, 35, 0]
+7a1c108206f72300 - link MAC ID
+
+[149, 36, 16, 238, 69, 247, 35, 0]
+952410ee45f72300 - pump MAC ID
+
+BGCapturedOnPump = 0x32
+ProgrammedBolusNormal = 0x15
+BolusNormal = 0xDC
+
+900D901F21D700C3DD0283E4BC057C0D871DF8D7002BDD0284E4BC05700D811D3ED7FF85DD0285E4BC05830D801DEDD7FF86DD0287E4BC057D0D7F1DB9D7FFB4DD0288E4BB05780D7C1D7BD7FFF3DD0289E4BB057D0D7C1DA1D70009DD028A26842F055F0D751C40D7FFA4DD028B26842F054F0D611B1BD8FF53DD028C26842F05540D5B1AF5D7FF36DD028E26842F056B0D611C01D8FF87DD028F26842F05750D691CB1D80030DD029026842F05680D691C3CD7006BDD029126842F055C0D661B8BD70025DD029226842F5C11021AC8D8FFA0DD029326842F053F0D541A37D7FF55DD029526842F053F0D4C1A04D7FF66DD029626842F05320D43196ED7FF7BDD029726842F051D0D351804D6FF57DD029826842F05140D251719D7FF24DD029926842F02410D3118E7285D069B26842F05430D371933
+D7 = VCNTR -0.41
+000B = RATE_OF_CHANGE 0.11
+DD059C26842F 053F 0D3A (319 314)
+1911 = ISIG 64.17
+D7 = VCNTR -0.41
+0070 = RATE_OF_CHANGE 1.12
+DD029D90AB5C5F 053A 0D3A (314 314)
+18C6 = ISIG 63.42
+D7 = VCNTR -0.41
+005E = RATE_OF_CHANGE 0.94
+DE029E86DC65 0514 0D32 (276 314)
+16B4 = ISIG 58.12
+77A6
+D8 = VCNTR -0.4
+FF7F = RATE_OF_CHANGE -1.29
+DD029F26842F 0526 0D2F (294 303)
+1732 = ISIG 59.38
+D7 = VCNTR -0.41
+FF56 = RATE_OF_CHANGE -1.7
+DD02A026842F 0721 0D2A (289 298)
+16EC = ISIG 58.68
+D7 = VCNTR -0.41
+FF63 = RATE_OF_CHANGE -1.57
+000064FE2C0C000107EA652C95A7A226DC2F 0517 0D20 (279 288)
+1657 = ISIG 57.19
+D7 = VCNTR -0.41
+FF84 = RATE_OF_CHANGE -1.24
+D608A336B40E06 00F8 0D0B (248 267)
+1491 = ISIG 52.65
+D8 = VCNTR -0.4
+FF77 = RATE_OF_CHANGE -1.37
+DD02A425DC2F06 00E3 0CF8 (227 248)
+133C = ISIG 49.24
+D8 = VCNTR -0.4
+FEED = RATE_OF_CHANGE -2.75
+DD02A525DE2F 00F6 5C02 01AB (246 248 50.35) ???
+D8 = VCNTR -0.4
+FEFF = RATE_OF_CHANGE -2.57
+DD02A684C2080501 0100 0CFC (256 252)
+1425 = ISIG 51.57
+D8 = VCNTR -0.4
+FF73 = RATE_OF_CHANGE -1.41
+DD02A7B8C30701 0107 0D01 (263 257)
+1495 = ISIG 52.69 (16 bit BE signed / 100)
+D8 = VCNTR -0.4 (8 bit BE signed / 100)
+0019 = RATE_OF_CHANGE 0.25 (16 bit BE signed / 100)
+3294022CCC02200000000000000032340001009019C511000000
+
+Status Response
+Byte 0x03 - Status. Bit 1 = Suspended, Bit 2 = Bolusing, Bit 5 = Active (0 means inactive, rewound pump, etc), Bit 6 = Temp Basal active, Bit 7 = CGM active?
+Byte 0x1a = Active basal pattern?
+Bytes 0x1b - 0x1e = Current basal normal rate BE int / 10000
+Bytes 0x21 + 0x22 = Current temp basal rate (U/hr) BE unsigned short???
+Byte 0x23 = Current temp basal percentage
+Bytes 0x24 + 0x25 = Temp basal minutes remaining (BE unsigned short)
+Bytes 0x26 - 0x29 = Total basal delivered today. BE int / 10000
+Byte 0x2a = Battery % (as an unsigned byte)
+Bytes 0x2b - 0x2e = Insulin Units left in pump BE unsigned int / 10000
+Bytes 0x2f = Hours of insulin left (25h means "more than 24 hours")
+Bytes 0x30 = Minutes of insulin left
+Bytes 0x33 + 0x34 = Active Insulin BE unsigned short / 10000
+Byte 0x35 & 0x36 (as a BE unsigned short) is the current sensor BGL in mg/dL
+Bytes 0x37 - 0x3e is the timestamp of the last sensor BGL
+Byte 0x40 contains flags for sensor status. Highest bit looks like "Warming up". Second highest bit looks like "Sensor active". Other bits look to be rates of change.
+Byte 0x48 = "BGL acted in"?
+Bytes 0x49 & 0x4a (as a BE unsigned short) is the current BGL acted in in mg/dL
+
+Trend arrows - byte 0x40
+Sensor Error = 0xe0 = 1110 0000
+No arrows = 0x60 = 0110 0000
+3 arrows up = 0xc0 = 1100 0000
+2 arrows up = 0xa0 = 1010 000
+1 arrow up = 0x80 = 1000 0000
+1 arrow down = 0x40 = 0000 0100
+2 arrows down = 0x20 = 0010 0000
+3 arrows down = 0x00 = 0000 0000
+
+Predictive suspend - byte 0x3f?
+Suspend before low = 0x80
