@@ -9,7 +9,7 @@ import binascii
 import sys
 import time
 import datetime
-import crc16
+import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
 
@@ -87,21 +87,21 @@ class DateTimeHelper( object ):
         baseTime = int( datetime.datetime( 2000, 1, 1 ).strftime( '%s' ) )
 
         # Return a struct_time
+        #print "BASE: {}, RTC: {}, OFFSET: {}".format( baseTime, rtc, offset )
         return time.localtime( baseTime + rtc + offset )
 
 class MedtronicSession( object ):
-    # FIXME - hardcoded for Lennart's pump
-    HMAC = 'e28fe4e5cf3c1eb6d6a2ec5a093093d4f397237dc60b3f2c1ef64f31e32077c4'
-    hexKey = '57833334130906a587b7a0437bc28a69'
-    _linkMAC = 1055866 + 0x0023F70682000000
-    _pumpMAC = 1057941 + 0x0023F745EE000000
     radioChannel = None
     bayerSequenceNumber = 1
     minimedSequenceNumber = 1
 
-    def __init__( self ):
-        # TODO - we can remove __init__ once the linkMAC setter is being used
-        self.linkMAC = self._linkMAC
+    @property
+    def HMAC( self ):
+        return self.config.hmac
+
+    @property
+    def hexKey( self ):
+        return self.config.key
 
     @property
     def linkMAC( self ):
@@ -111,13 +111,15 @@ class MedtronicSession( object ):
     def linkMAC( self, value ):
         self._linkMAC = value
         self.config = Config( self.linkSerial )
+        if self.config.hmac == "":
+            raise Exception( "HMAC not found in config database. Run get_hmac_and_key.py to get populate HMAC and key." )
 
     @property
     def pumpMAC( self ):
         return self._pumpMAC
 
     @pumpMAC.setter
-    def setPumpMAC( self, value ):
+    def pumpMAC( self, value ):
         self._pumpMAC = value
 
     @property
@@ -266,6 +268,21 @@ class MedtronicReceiveMessage( MedtronicMessage ):
             raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
 
         return response
+
+class ReadInfoResponseMessage( object ):
+    @classmethod
+    def decode( cls, message ):
+        response = cls()
+        response.responsePayload = message
+        return response
+
+    @property
+    def linkMAC( self ):
+        return struct.unpack( '>Q', self.responsePayload[0:8] )[0]
+
+    @property
+    def pumpMAC( self ):
+        return struct.unpack( '>Q', self.responsePayload[8:16] )[0]
 
 class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     @classmethod
@@ -430,6 +447,8 @@ class MedtronicMachine( object ):
     session = None
 
     def __init__( self ):
+        self.session = MedtronicSession()
+
         self.deviceInfo = None
         self.machine = Machine( model=self, states=MedtronicMachine.states, initial='silent' )
 
@@ -471,7 +490,7 @@ class MedtronicMachine( object ):
             else:
                 raise TimeoutException( 'Timeout waiting for message' )
 
-        print "READ: " + binascii.hexlify( payload ) # Debugging
+        #print "READ: " + binascii.hexlify( payload ) # Debugging
         return payload
 
     def sendMessage( self, payload ):
@@ -479,7 +498,7 @@ class MedtronicMachine( object ):
         for packet in [ payload[ i: i+60 ] for i in range( 0, len( payload ), 60 ) ]:
             message = struct.pack( '>3sB', 'ABC', len( packet ) ) + packet
             self.device.write( bytearray( message ) )
-            print "SEND: " + binascii.hexlify( message ) # Debugging
+            #print "SEND: " + binascii.hexlify( message ) # Debugging
 
     def requestDeviceInfo( self ):
         print "# Request Device Info"
@@ -502,6 +521,7 @@ class MedtronicMachine( object ):
                 raise RuntimeError( 'Expected to get an ASTM message, but got {0} instead'.format( binascii.hexlify( msg ) ) )
 
             self.deviceInfo = astm.codec.decode( str( msg ) )
+            self.session.linkMAC = int( self.device.get_serial_number_string() ) + 0x0023F70682000000
             self.checkControlMessage( curses.ascii.ENQ )
 
         except TimeoutException as e:
@@ -533,8 +553,6 @@ class MedtronicMachine( object ):
     def requestOpenConnection( self ):
         print "# Request Open Connection"
 
-        self.session = MedtronicSession()
-
         mtMessage = binascii.unhexlify( self.session.HMAC )
         bayerMessage = BayerBinaryMessage( 0x10, self.session, mtMessage )
         self.sendMessage( bayerMessage.encode() )
@@ -544,10 +562,9 @@ class MedtronicMachine( object ):
         print "# Request Read Info"
         bayerMessage = BayerBinaryMessage( 0x14, self.session )
         self.sendMessage( bayerMessage.encode() )
-        # TODO - make a responseReadInfo that stores serials into this the session. They're hardcoded ATM
-        #self.session.setLinkMAC( linkMAC )
-        #self.session.setPumpMAC( pumpMAC )
-        self.readMessage()
+        response = BayerBinaryMessage.decode( self.readMessage() ) # The response is a 0x14 as well
+        info = ReadInfoResponseMessage.decode( response.payload )
+        self.session.pumpMAC = info.pumpMAC
 
     def doNegotiateChannel( self ):
         print "# Negotiate pump comms channel"
@@ -595,8 +612,7 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readMessage() # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        timeResponse = PumpTimeResponseMessage.decode( response.payload, self.session )
-        print time.strftime( "Pump time is: %a, %d %b %Y %H:%M:%S +0000", timeResponse.datetime )
+        return PumpTimeResponseMessage.decode( response.payload, self.session ).datetime
 
     def getPumpStatus( self ):
         print "# Get Pump Status"
@@ -608,12 +624,7 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readMessage() # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        statusResponse = PumpStatusResponseMessage.decode( response.payload, self.session )
-        print binascii.hexlify( statusResponse.responsePayload )
-        print "Active Insulin: {0:.3f}U".format( statusResponse.activeInsulin )
-        print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( statusResponse.sensorBGL,
-            statusResponse.sensorBGL / 18.016,
-            time.strftime( "%a, %d %b %Y %H:%M:%S +0000", statusResponse.sensorBGLTimestamp ) )
+        return PumpStatusResponseMessage.decode( response.payload, self.session )
 
     def getTempBasalStatus( self ):
         print "# Get Temp Basal Status"
@@ -625,8 +636,7 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readMessage() # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        statusResponse = MedtronicReceiveMessage.decode( response.payload, self.session )
-        print binascii.hexlify( statusResponse.responsePayload )
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
 
     def getBolusesStatus( self ):
         print "# Get Boluses Status"
@@ -638,20 +648,25 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readMessage() # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        statusResponse = MedtronicReceiveMessage.decode( response.payload, self.session )
-        print binascii.hexlify( statusResponse.responsePayload )
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
 
-mt = MedtronicMachine()
-mt.initDevice()
-mt.getDeviceInfo()
-print mt.deviceSerial
-mt.controlMode()
-mt.passthroughMode()
-mt.openConnection()
-mt.readInfo()
-mt.negotiateChannel()
-mt.beginEHSM()
-mt.getPumpTime()
-mt.getPumpStatus()
-mt.getTempBasalStatus()
-mt.getBolusesStatus()
+if __name__ == '__main__':
+    mt = MedtronicMachine()
+    mt.initDevice()
+    mt.getDeviceInfo()
+    print mt.deviceSerial
+    mt.controlMode()
+    mt.passthroughMode()
+    mt.openConnection()
+    mt.readInfo()
+    mt.negotiateChannel()
+    mt.beginEHSM()
+    print time.strftime( "Pump time is: %a, %d %b %Y %H:%M:%S +0000", mt.getPumpTime() )
+    status = mt.getPumpStatus()
+    print binascii.hexlify( status.responsePayload )
+    print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
+    print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
+        status.sensorBGL / 18.016,
+        time.strftime( "%a, %d %b %Y %H:%M:%S +0000", status.sensorBGLTimestamp ) )
+    #print binascii.hexlify( mt.getTempBasalStatus().responsePayload )
+    #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
