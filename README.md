@@ -11,12 +11,8 @@ Space to collaborate on decoding Contour Next Link comms protocols, and the pigg
 ```
 $ sudo -H pip install requests hidapi astm transitions PyCrypto crc16
 ```
-* Run `read_minimed_next24.py` to initialise the config database with your link (USB stick) serial number:
-```
-$ python read_minimed_next24.py
-```
 * Plug in your Contour NextLink 2.4 USB stick
-* Run ```get_hmac_and_key.py``` to get your HMAC and AES key for your link serial number. This script takes one argument, which is your CareLink username. The script will also ask for your password - this is not echoed out or stored at all.
+* Run ```get_hmac_and_key.py``` to get your HMAC and AES key for your USB stick serial number. This script takes one argument, which is your CareLink username. The script will also ask for your password - this is not echoed out or stored at all.
 ```
 $ python get_hmac_and_key.py my_carelink_username  
 Enter the password for the CareLink user my_carelink_username:

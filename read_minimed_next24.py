@@ -29,22 +29,22 @@ class NegotiationException( Exception ):
     pass
 
 class Config( object ):
-    def __init__( self, linkSerial ):
+    def __init__( self, stickSerial ):
         self.conn = sqlite3.connect( 'read_minimed.db' )
         self.c = self.conn.cursor()
         self.c.execute( '''CREATE TABLE IF NOT EXISTS
-            config ( link_serial INTEGER PRIMARY KEY, hmac TEXT, key TEXT, last_radio_channel INTEGER )''' )
-        self.c.execute( "INSERT OR IGNORE INTO config VALUES ( ?, ?, ?, ? )", ( linkSerial, '', '', 0x14 ) )
+            config ( stick_serial TEXT PRIMARY KEY, hmac TEXT, key TEXT, last_radio_channel INTEGER )''' )
+        self.c.execute( "INSERT OR IGNORE INTO config VALUES ( ?, ?, ?, ? )", ( stickSerial, '', '', 0x14 ) )
         self.conn.commit()
 
-        self.loadConfig( linkSerial )
+        self.loadConfig( stickSerial )
 
-    def loadConfig( self, linkSerial ):
-        self.c.execute( 'SELECT * FROM config WHERE link_serial = ?', ( linkSerial, ) )
+    def loadConfig( self, stickSerial ):
+        self.c.execute( 'SELECT * FROM config WHERE stick_serial = ?', ( stickSerial, ) )
         self.data = self.c.fetchone()
 
     @property
-    def linkSerial( self ):
+    def stickSerial( self ):
         return self.data[0]
 
     @property
@@ -53,9 +53,9 @@ class Config( object ):
 
     @lastRadioChannel.setter
     def lastRadioChannel( self, value ):
-        self.c.execute( "UPDATE config SET last_radio_channel = ? WHERE link_serial = ?", ( value, self.linkSerial ) )
+        self.c.execute( "UPDATE config SET last_radio_channel = ? WHERE stick_serial = ?", ( value, self.stickSerial ) )
         self.conn.commit()
-        self.loadConfig( self.linkSerial )
+        self.loadConfig( self.stickSerial )
 
     @property
     def hmac( self ):
@@ -63,9 +63,9 @@ class Config( object ):
 
     @hmac.setter
     def hmac( self, value ):
-        self.c.execute( "UPDATE config SET hmac = ? WHERE link_serial = ?", ( value, self.linkSerial ) )
+        self.c.execute( "UPDATE config SET hmac = ? WHERE stick_serial = ?", ( value, self.stickSerial ) )
         self.conn.commit()
-        self.loadConfig( self.linkSerial )
+        self.loadConfig( self.stickSerial )
 
     @property
     def key( self ):
@@ -73,9 +73,9 @@ class Config( object ):
 
     @key.setter
     def key( self, value ):
-        self.c.execute( "UPDATE config SET key = ? WHERE link_serial = ?", ( value, self.linkSerial ) )
+        self.c.execute( "UPDATE config SET key = ? WHERE stick_serial = ?", ( value, self.stickSerial ) )
         self.conn.commit()
-        self.loadConfig( self.linkSerial )
+        self.loadConfig( self.stickSerial )
 
 class DateTimeHelper( object ):
     @staticmethod
@@ -97,11 +97,24 @@ class MedtronicSession( object ):
 
     @property
     def HMAC( self ):
+        if self.config.hmac == "":
+            raise Exception( "HMAC not found in config database. Run get_hmac_and_key.py to get populate HMAC and key." )
         return self.config.hmac
 
     @property
     def hexKey( self ):
+        if self.config.key == "":
+            raise Exception( "Key not found in config database. Run get_hmac_and_key.py to get populate HMAC and key." )
         return self.config.key
+
+    @property
+    def stickSerial( self ):
+        return self._stickSerial
+
+    @stickSerial.setter
+    def stickSerial( self, value ):
+        self._stickSerial = value
+        self.config = Config( self.stickSerial )
 
     @property
     def linkMAC( self ):
@@ -110,9 +123,6 @@ class MedtronicSession( object ):
     @linkMAC.setter
     def linkMAC( self, value ):
         self._linkMAC = value
-        self.config = Config( self.linkSerial )
-        if self.config.hmac == "":
-            raise Exception( "HMAC not found in config database. Run get_hmac_and_key.py to get populate HMAC and key." )
 
     @property
     def pumpMAC( self ):
@@ -468,6 +478,7 @@ class MedtronicMachine( object ):
 
     def __init__( self ):
         self.session = MedtronicSession()
+        self.device = None
 
         self.deviceInfo = None
         self.machine = Machine( model=self, states=MedtronicMachine.states, initial='silent' )
@@ -541,7 +552,7 @@ class MedtronicMachine( object ):
                 raise RuntimeError( 'Expected to get an ASTM message, but got {0} instead'.format( binascii.hexlify( msg ) ) )
 
             self.deviceInfo = astm.codec.decode( str( msg ) )
-            self.session.linkMAC = int( self.device.get_serial_number_string() ) + 0x0023F70682000000
+            self.session.stickSerial = self.deviceSerial
             self.checkControlMessage( curses.ascii.ENQ )
 
         except TimeoutException as e:
@@ -584,6 +595,7 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         response = BayerBinaryMessage.decode( self.readMessage() ) # The response is a 0x14 as well
         info = ReadInfoResponseMessage.decode( response.payload )
+        self.session.linkMAC = info.linkMAC
         self.session.pumpMAC = info.pumpMAC
 
     def doNegotiateChannel( self ):
