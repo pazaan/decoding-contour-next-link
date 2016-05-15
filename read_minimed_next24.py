@@ -9,6 +9,7 @@ import binascii
 import sys
 import time
 import datetime
+from dateutil import tz
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
@@ -83,12 +84,21 @@ class DateTimeHelper( object ):
         rtc = ( pumpDateTime >> 32 ) & 0xffffffff
         offset = ( pumpDateTime & 0xffffffff ) - 0x100000000
 
-        # Grab the base time for our current timezone
-        baseTime = int( datetime.datetime( 2000, 1, 1 ).strftime( '%s' ) )
+        # Base time is midnight 1st Jan 2000 (UTC)
+        baseTime = 946684800;
 
-        # Return a struct_time
-        #print "BASE: {}, RTC: {}, OFFSET: {}".format( baseTime, rtc, offset )
-        return time.localtime( baseTime + rtc + offset )
+        # The time from the pump represents epochTime in UTC, but we treat it as if it were in our own timezone
+        # We do this, because the pump does not have a concept of timezone
+        # For example, if baseTime + rtc + offset was 1463137668, this would be
+        # Fri, 13 May 2016 21:07:48 UTC.
+        # However, the time the pump *means* is Fri, 13 May 2016 21:07:48 in our own timezone
+        offsetFromUTC = int(datetime.datetime.utcnow().strftime('%s')) - int(datetime.datetime.now().strftime('%s'))
+        epochTime = baseTime + rtc + offset + offsetFromUTC
+
+        # Return a non-naive datetime in the local timezone
+        # (so that we can convert to UTC for Nightscout later)
+        localTz = tz.tzlocal()
+        return datetime.datetime.fromtimestamp( epochTime, localTz )
 
 class MedtronicSession( object ):
     radioChannel = None
@@ -245,6 +255,8 @@ class MedtronicSendMessage( MedtronicMessage ):
             seqNo = 5
         elif messageType == 0x0200:
             seqNo = 6
+        elif messageType == 0x0100:
+            seqNo = 4
 
         encryptedPayload = struct.pack( '>BH', seqNo, messageType )
         if payload:
@@ -425,6 +437,11 @@ class PumpTempBasalRequestMessage( MedtronicSendMessage ):
 class PumpBolusesRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0114, session )
+
+class PumpRemoteBolusRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        payload = struct.pack( '>H', 5000 )
+        MedtronicSendMessage.__init__( self, 0x0100, session, payload )
 
 class BayerBinaryMessage( object ):
     def __init__( self, messageType=None, session=None, payload=None ):
@@ -682,6 +699,18 @@ class MedtronicMachine( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
+    def doRemoteBasal( self ):
+        print "# Execute Remote Bolus"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
+        mtMessage = PumpRemoteBolusRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readMessage() # Read the 0x81
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
+
 if __name__ == '__main__':
     mt = MedtronicMachine()
     mt.initDevice()
@@ -693,16 +722,17 @@ if __name__ == '__main__':
     mt.readInfo()
     mt.negotiateChannel()
     mt.beginEHSM()
-    print time.strftime( "Pump time is: %a, %d %b %Y %H:%M:%S +0000", mt.getPumpTime() )
+    print mt.getPumpTime().strftime( "Pump time is: %c" )
     status = mt.getPumpStatus()
     print binascii.hexlify( status.responsePayload )
     print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
     print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
         status.sensorBGL / 18.016,
-        time.strftime( "%a, %d %b %Y %H:%M:%S +0000", status.sensorBGLTimestamp ) )
+        status.sensorBGLTimestamp.strftime( "%c" ) )
     print "BGL trend: {0}".format( status.trendArrow )
     print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
     #print binascii.hexlify( mt.getTempBasalStatus().responsePayload )
     #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
+    #print binascii.hexlify( mt.doRemoteBasal().responsePayload )
