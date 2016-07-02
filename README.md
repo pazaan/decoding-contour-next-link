@@ -9,7 +9,7 @@ Space to collaborate on decoding Contour Next Link comms protocols, and the pigg
 * Clone this project
 * Install the dependencies:
 ```
-$ sudo -H pip install requests hidapi astm transitions PyCrypto crc16
+$ sudo -H pip install requests hidapi astm transitions PyCrypto crc16 curses python-dateutil
 ```
 * Plug in your Contour NextLink 2.4 USB stick
 * Run ```get_hmac_and_key.py``` to get your HMAC and AES key for your USB stick serial number. This script takes one argument, which is your CareLink username. The script will also ask for your password - this is not echoed out or stored at all.
