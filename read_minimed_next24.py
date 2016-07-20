@@ -4,7 +4,6 @@ import hid # pip install hidapi - Platform independant
 import astm # pip install astm
 from transitions import Machine # pip install transitions
 import struct
-import curses.ascii
 import binascii
 import sys
 import time
@@ -13,6 +12,18 @@ from dateutil import tz
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
+
+ascii= {
+    'ACK' : 0x06,
+    'CR' : 0x0D,
+    'ENQ' : 0x05,
+    'EOT' : 0x04,
+    'ETB' : 0x17,
+    'ETX' : 0x03,
+    'LF' : 0x0A,
+    'NAK' : 0x15,
+    'STX' : 0x02
+}
 
 class TimeoutException( Exception ):
     pass
@@ -570,11 +581,11 @@ class MedtronicMachine( object ):
 
             self.deviceInfo = astm.codec.decode( str( msg ) )
             self.session.stickSerial = self.deviceSerial
-            self.checkControlMessage( curses.ascii.ENQ )
+            self.checkControlMessage( ascii['ENQ'] )
 
         except TimeoutException as e:
-            self.sendMessage( struct.pack( '>B', curses.ascii.EOT ) )
-            self.checkControlMessage( curses.ascii.ENQ )
+            self.sendMessage( struct.pack( '>B', ascii['EOT'] ) )
+            self.checkControlMessage( ascii['ENQ'] )
             self.getDeviceInfo()
 
     def checkControlMessage( self, controlChar ):
@@ -584,19 +595,19 @@ class MedtronicMachine( object ):
 
     def enterControlMode( self ):
         # TODO - should this be a mini FSM?
-        self.sendMessage( struct.pack( '>B', curses.ascii.NAK ) )
-        self.checkControlMessage( curses.ascii.EOT )
-        self.sendMessage( struct.pack( '>B', curses.ascii.ENQ ) )
-        self.checkControlMessage( curses.ascii.ACK )
+        self.sendMessage( struct.pack( '>B', ascii['NAK'] ) )
+        self.checkControlMessage( ascii['EOT'] )
+        self.sendMessage( struct.pack( '>B', ascii['ENQ'] ) )
+        self.checkControlMessage( ascii['ACK'] )
 
     def enterPassthroughMode( self ):
         # TODO - should this be a mini FSM?
         self.sendMessage( struct.pack( '>2s', 'W|' ) )
-        self.checkControlMessage( curses.ascii.ACK )
+        self.checkControlMessage( ascii['ACK'] )
         self.sendMessage( struct.pack( '>2s', 'Q|' ) )
-        self.checkControlMessage( curses.ascii.ACK )
+        self.checkControlMessage( ascii['ACK'] )
         self.sendMessage( struct.pack( '>2s', '1|' ) )
-        self.checkControlMessage( curses.ascii.ACK )
+        self.checkControlMessage( ascii['ACK'] )
 
     def requestOpenConnection( self ):
         print "# Request Open Connection"
