@@ -7,9 +7,13 @@ Space to collaborate on decoding Contour Next Link comms protocols, and the pigg
 ## Getting Started
 * Make sure you have `python` and `pip` installed
 * Clone this project
-* Install the dependencies:
+* If you're running macOS (El Capitan or later), you'll need to update `setuptools` like this first (due to [System Integrity Protection](https://support.apple.com/en-au/HT204899)):
 ```
-$ sudo -H pip install requests hidapi astm transitions PyCrypto crc16 curses python-dateutil
+$ sudo -H pip install --upgrade setuptools --user python
+```
+* Install the dependencies:  
+```
+$ sudo -H pip install requests hidapi astm transitions PyCrypto crc16 python-dateutil
 ```
 * Plug in your Contour NextLink 2.4 USB stick
 * Run ```get_hmac_and_key.py``` to get your HMAC and AES key for your USB stick serial number. This script takes one argument, which is your CareLink username. The script will also ask for your password - this is not echoed out or stored at all.
@@ -47,4 +51,3 @@ Sensor BGL: 340 mg/dL (18.9 mmol/L) at Sun, 01 May 2016 16:47:21 +0000
 
 ## Known Issues
 * Assumed pump time was in UTC, but this doesn't ring true for non DST times (in Melbourne, anyway)
-* Currently uses `curses.ascii`, which doesn't work on Windows.
