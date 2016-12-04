@@ -12,6 +12,8 @@ from dateutil import tz
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
+import hashlib
+import re
 
 ascii= {
     'ACK' : 0x06,
@@ -105,6 +107,8 @@ class DateTimeHelper( object ):
         # However, the time the pump *means* is Fri, 13 May 2016 21:07:48 in our own timezone
         offsetFromUTC = int(datetime.datetime.utcnow().strftime('%s')) - int(datetime.datetime.now().strftime('%s'))
         epochTime = baseTime + rtc + offset + offsetFromUTC
+        if epochTime < 0:
+            epochTime = 0
 
         # Return a non-naive datetime in the local timezone
         # (so that we can convert to UTC for Nightscout later)
@@ -115,12 +119,14 @@ class MedtronicSession( object ):
     radioChannel = None
     bayerSequenceNumber = 1
     minimedSequenceNumber = 1
+    sendSequenceNumber = 0
 
     @property
     def HMAC( self ):
-        if self.config.hmac == "":
-            raise Exception( "HMAC not found in config database. Run get_hmac_and_key.py to get populate HMAC and key." )
-        return self.config.hmac
+        serial = str( re.sub( r"\d+-", "", self.stickSerial ) )
+        paddingKey = "A4BD6CED9A42602564F413123"
+        digest = hashlib.sha256(serial + paddingKey).hexdigest()
+        return "".join(reversed([digest[i:i+2] for i in range(0, len(digest), 2)]))
 
     @property
     def hexKey( self ):
@@ -163,11 +169,15 @@ class MedtronicSession( object ):
 
     @property
     def KEY( self ):
-        return binascii.unhexlify( self.hexKey )
+        return self._key
+
+    @KEY.setter
+    def KEY( self, value ):
+        self._key = value
 
     @property
     def IV( self ):
-        return binascii.unhexlify( "{0:02x}{1}".format( self.radioChannel, self.hexKey[2:] ) )
+        return binascii.unhexlify( "{0:02x}{1}".format( self.radioChannel, binascii.hexlify( self.KEY )[2:] ) )
 
 class MedtronicMessage( object ):
     ENVELOPE_SIZE = 2
@@ -255,25 +265,18 @@ class MedtronicSendMessage( MedtronicMessage ):
         MedtronicMessage.__init__( self, 0x05, session )
 
         # FIXME - make this not be hard coded
-        seqNo = 0x80
-        if messageType == 0x0403:
-            seqNo = 2
-        elif messageType == 0x0112:
-            seqNo = 3
-        elif messageType == 0x0115:
-            seqNo = 4
-        elif messageType == 0x0114:
-            seqNo = 5
-        elif messageType == 0x0200:
-            seqNo = 6
-        elif messageType == 0x0100:
-            seqNo = 4
+        if messageType == 0x0412:
+            seqNo = self.session.sendSequenceNumber | 0x80
+        else:
+            seqNo = self.session.sendSequenceNumber
 
         encryptedPayload = struct.pack( '>BH', seqNo, messageType )
         if payload:
             encryptedPayload += payload
         crc = crc16.crc16xmodem( encryptedPayload, 0xffff )
         encryptedPayload += struct.pack( '>H', crc & 0xffff )
+        #print "### PAYLOAD"
+        #print binascii.hexlify( encryptedPayload )
 
         mmPayload = struct.pack( '<QBBB',
             self.session.pumpMAC,
@@ -284,6 +287,7 @@ class MedtronicSendMessage( MedtronicMessage ):
         mmPayload += self.encrypt( encryptedPayload )
 
         self.setPayload( mmPayload )
+        self.session.sendSequenceNumber += 1
 
 class MedtronicReceiveMessage( MedtronicMessage ):
     @classmethod
@@ -295,10 +299,14 @@ class MedtronicReceiveMessage( MedtronicMessage ):
 
         response.responsePayload = decryptedResponsePayload[0:-2]
 
-        checksum = struct.unpack( '>H', str( decryptedResponsePayload[-2:] ) )[0]
-        calcChecksum = MedtronicMessage.calculateCcitt( response.responsePayload )
-        if( checksum != calcChecksum ):
-            raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
+        #print "### DECRYPTED PAYLOAD:"
+        #print binascii.hexlify( response.responsePayload )
+
+        if len( response.responsePayload ) > 2:
+            checksum = struct.unpack( '>H', str( decryptedResponsePayload[-2:] ) )[0]
+            calcChecksum = MedtronicMessage.calculateCcitt( response.responsePayload )
+            if( checksum != calcChecksum ):
+                raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
 
         return response
 
@@ -316,6 +324,34 @@ class ReadInfoResponseMessage( object ):
     @property
     def pumpMAC( self ):
         return struct.unpack( '>Q', self.responsePayload[8:16] )[0]
+
+class ReadLinkKeyResponseMessage( object ):
+    @classmethod
+    def decode( cls, message ):
+        response = cls()
+        response.responsePayload = message
+        return response
+
+    @property
+    def packedLinkKey( self ):
+        return struct.unpack( '>55s', self.responsePayload[0:55] )[0]
+
+    def linkKey( self, serialNumber ):
+        key = ""
+        pos = ord( serialNumber[-1:] ) & 7
+
+        for i in range(16):
+            if ( ord( self.packedLinkKey[pos + 1] ) & 1) == 1:
+                key += chr( ~ord( self.packedLinkKey[pos] ) & 0xff )
+            else:
+                key += self.packedLinkKey[pos]
+
+            if (( ord( self.packedLinkKey[pos + 1] ) >> 1 ) & 1 ) == 0:
+                pos += 3
+            else:
+                pos += 2
+
+        return key
 
 class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     @classmethod
@@ -337,8 +373,12 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
             return true
 
     @property
+    def encodedDatetime( self ):
+        return struct.unpack( '>Q', self.responsePayload[4:] )[0]
+
+    @property
     def datetime( self ):
-        dateTimeData = struct.unpack( '>Q', self.responsePayload[4:] )[0]
+        dateTimeData = self.encodedDatetime
         return DateTimeHelper.decodeDateTime( dateTimeData )
 
 class PumpStatusResponseMessage( MedtronicReceiveMessage ):
@@ -426,7 +466,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        payload = struct.pack( '<B', 0x00 )
+        payload = struct.pack( '>B', 0x00 )
         MedtronicSendMessage.__init__( self, 0x0412, session, payload )
 
 class PumpTimeRequestMessage( MedtronicSendMessage ):
@@ -436,6 +476,10 @@ class PumpTimeRequestMessage( MedtronicSendMessage ):
 class PumpStatusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0112, session )
+
+class BasicNgpParametersRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, 0x0138, session )
 
 class DeviceCharacteristicsRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
@@ -450,9 +494,22 @@ class PumpBolusesRequestMessage( MedtronicSendMessage ):
         MedtronicSendMessage.__init__( self, 0x0114, session )
 
 class PumpRemoteBolusRequestMessage( MedtronicSendMessage ):
-    def __init__( self, session ):
-        payload = struct.pack( '>H', 5000 )
+    def __init__( self, session, bolusID, amount, execute ):
+        unknown1 = 0 # ??
+        unknown2 = 0 # Square Wave amount?
+        unknown3 = 0 # Square Wave length?
+        payload = struct.pack( '>BBHHBH', bolusID, execute, unknown1, amount * 10000, unknown2, unknown3 )
         MedtronicSendMessage.__init__( self, 0x0100, session, payload )
+
+class Type405RequestMessage( MedtronicSendMessage ):
+    def __init__( self, session, pumpDateTime ):
+        payload = struct.pack( '>BQ', 0x01, pumpDateTime )
+        MedtronicSendMessage.__init__( self, 0x0405, session, payload )
+
+class Type124RequestMessage( MedtronicSendMessage ):
+    def __init__( self, session, pumpDateTime ):
+        payload = struct.pack( '>QBB', pumpDateTime, 0x00, 0xFF )
+        MedtronicSendMessage.__init__( self, 0x0124, session, payload )
 
 class BayerBinaryMessage( object ):
     def __init__( self, messageType=None, session=None, payload=None ):
@@ -500,7 +557,7 @@ class MedtronicMachine( object ):
     CHANNELS = [ 0x14, 0x11, 0x0e, 0x17, 0x1a ] # In the order that the CareLink applet requests them
 
     states = [ 'silent', 'device ready', 'device info', 'control mode', 'passthrough mode',
-        'open connection', 'read info', 'negotiate channel', 'EHSM session', 'error' ]
+        'open connection', 'read info', 'read link key', 'negotiate channel', 'EHSM session', 'error' ]
 
     session = None
 
@@ -519,7 +576,8 @@ class MedtronicMachine( object ):
         self.machine.add_transition( 'passthroughMode', 'control mode', 'passthrough mode', before='enterPassthroughMode' )
         self.machine.add_transition( 'openConnection', 'passthrough mode', 'open connection', before='requestOpenConnection' )
         self.machine.add_transition( 'readInfo', 'open connection', 'read info', before='requestReadInfo' )
-        self.machine.add_transition( 'negotiateChannel', 'read info', 'negotiate channel', before='doNegotiateChannel' )
+        self.machine.add_transition( 'getLinkKey', 'read info', 'read link key', before='requestReadLinkKey' )
+        self.machine.add_transition( 'negotiateChannel', 'read link key', 'negotiate channel', before='doNegotiateChannel' )
         self.machine.add_transition( 'beginEHSM', 'negotiate channel', 'EHSM session', before='sendBeginEHSM' )
 
     def openDevice( self ):
@@ -626,6 +684,14 @@ class MedtronicMachine( object ):
         self.session.linkMAC = info.linkMAC
         self.session.pumpMAC = info.pumpMAC
 
+    def requestReadLinkKey( self ):
+        print "# Request Read Link Key"
+        bayerMessage = BayerBinaryMessage( 0x16, self.session )
+        self.sendMessage( bayerMessage.encode() )
+        response = BayerBinaryMessage.decode( self.readMessage() ) # The response is a 0x14 as well
+        keyRequest = ReadLinkKeyResponseMessage.decode( response.payload )
+        self.session.KEY = keyRequest.linkKey( self.session.stickSerial )
+
     def doNegotiateChannel( self ):
         print "# Negotiate pump comms channel"
 
@@ -672,7 +738,7 @@ class MedtronicMachine( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readMessage() # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        return PumpTimeResponseMessage.decode( response.payload, self.session ).datetime
+        return PumpTimeResponseMessage.decode( response.payload, self.session )
 
     def getPumpStatus( self ):
         print "# Get Pump Status"
@@ -710,11 +776,47 @@ class MedtronicMachine( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
-    def doRemoteBasal( self ):
+    def getBasicParameters( self ):
+        print "# Get Basic Parameters"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
+        mtMessage = BasicNgpParametersRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readMessage() # Read the 0x81
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
+
+    def do405Message( self, pumpDateTime ):
+        print "# Send Message Type 405"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
+        mtMessage = Type405RequestMessage( self.session, pumpDateTime )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readMessage() # Read the 0x81
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
+
+    def do124Message( self, pumpDateTime ):
+        print "# Send Message Type 124"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
+        mtMessage = Type124RequestMessage( self.session, pumpDateTime )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readMessage() # Read the 0x81
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
+
+    def doRemoteBolus( self, bolusID, amount, execute ):
         print "# Execute Remote Bolus"
         if self.state != 'EHSM session':
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
-        mtMessage = PumpRemoteBolusRequestMessage( self.session )
+        mtMessage = PumpRemoteBolusRequestMessage( self.session, bolusID, amount, execute )
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
@@ -731,9 +833,16 @@ if __name__ == '__main__':
     mt.passthroughMode()
     mt.openConnection()
     mt.readInfo()
+    mt.getLinkKey()
     mt.negotiateChannel()
     mt.beginEHSM()
-    print mt.getPumpTime().strftime( "Pump time is: %c" )
+
+    print binascii.hexlify( mt.getBasicParameters().responsePayload )
+    pumpDatetime = mt.getPumpTime()
+    print pumpDatetime.encodedDatetime
+    print "{0:x}".format(pumpDatetime.encodedDatetime)
+    print pumpDatetime.datetime.strftime( "Pump time is: %c" )
+
     status = mt.getPumpStatus()
     print binascii.hexlify( status.responsePayload )
     print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
@@ -744,6 +853,12 @@ if __name__ == '__main__':
     print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
-    #print binascii.hexlify( mt.getTempBasalStatus().responsePayload )
-    #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
-    #print binascii.hexlify( mt.doRemoteBasal().responsePayload )
+
+    # Commented code to try remote bolusing...
+#    print binascii.hexlify( mt.do405Message( pumpDatetime.encodedDatetime ).responsePayload )
+#    print binascii.hexlify( mt.do124Message( pumpDatetime.encodedDatetime ).responsePayload )
+#    print binascii.hexlify( mt.getBasicParameters().responsePayload )
+#    #print binascii.hexlify( mt.getTempBasalStatus().responsePayload )
+#    #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
+#    print binascii.hexlify( mt.doRemoteBolus( 1, 0.1, 0 ).responsePayload )
+#    #print binascii.hexlify( mt.doRemoteBolus( 1, 0.1, 1 ).responsePayload )
