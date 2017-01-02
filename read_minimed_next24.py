@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 import hid # pip install hidapi - Platform independant
 import astm # pip install astm
