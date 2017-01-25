@@ -3,7 +3,7 @@
 import sys
 import binascii
 import pyshark # pip install pyshark
-from bitstring import BitArray, BitStream, pack # pip install bigstring
+from bitstring import BitArray, BitStream, pack # pip install bitstring
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import argparse

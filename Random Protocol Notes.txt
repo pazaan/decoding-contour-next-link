@@ -148,7 +148,7 @@ D8 = VCNTR -0.4 (8 bit BE signed / 100)
 
 Status Response
 Byte 0x03 - Status. Bit 1 = Suspended, Bit 2 = Bolusing, Bit 5 = Active (0 means inactive, rewound pump, etc), Bit 6 = Temp Basal active, Bit 7 = CGM active?
-Byte 0x1a = Active basal pattern?
+Byte 0x1a = Active basal pattern
 Bytes 0x1b - 0x1e = Current basal normal rate BE int / 10000
 Bytes 0x21 + 0x22 = Current temp basal rate (U/hr) BE unsigned short???
 Byte 0x23 = Current temp basal percentage
@@ -159,14 +159,15 @@ Bytes 0x2b - 0x2e = Insulin Units left in pump BE unsigned int / 10000
 Bytes 0x2f = Hours of insulin left (25h means "more than 24 hours")
 Bytes 0x30 = Minutes of insulin left
 Bytes 0x33 + 0x34 = Active Insulin BE unsigned short / 10000
-Byte 0x35 & 0x36 (as a BE unsigned short) is the current sensor BGL in mg/dL
+Byte 0x35 & 0x36 (as a BE unsigned short) is the current sensor SGV in mg/dL
 Bytes 0x37 - 0x3e is the timestamp of the last sensor BGL
+Byte 0x3f - Predictive suspend (see below)
 Byte 0x40 contains flags for sensor status. Highest bit looks like "Warming up". Second highest bit looks like "Sensor active". Other bits look to be rates of change.
 Byte 0x48 = "BGL acted in"?
 Bytes 0x49 & 0x4a (as a BE unsigned short) is the current BGL acted in in mg/dL
 
 Trend arrows - byte 0x40
-Sensor Error = 0xe0 = 1110 0000
+Sensor Error or Calibrating = 0xe0 = 1110 0000
 No arrows = 0x60 = 0110 0000
 3 arrows up = 0xc0 = 1100 0000
 2 arrows up = 0xa0 = 1010 000
@@ -175,5 +176,6 @@ No arrows = 0x60 = 0110 0000
 2 arrows down = 0x20 = 0010 0000
 3 arrows down = 0x00 = 0000 0000
 
-Predictive suspend - byte 0x3f?
-Suspend before low = 0x80
+Predictive suspend = byte 0x3f
+Suspend before low = 0x80, also seen 0x88 (go with non-zero for now, and log?)
+Either way, the suspend bit in 0x03 is set
