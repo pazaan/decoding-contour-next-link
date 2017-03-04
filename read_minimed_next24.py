@@ -402,7 +402,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def tempBasalRate( self ):
-        return float( struct.unpack( '>H', self.responsePayload[0x21:0x23] )[0] )
+        return float( struct.unpack( '>H', self.responsePayload[0x21:0x23] )[0] ) / 10000
 
     @property
     def tempBasalPercentage( self ):
@@ -485,6 +485,11 @@ class DeviceCharacteristicsRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0200, session )
 
+class SuspendResumeRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        payload = struct.pack( '>B', 0x01 )
+        MedtronicSendMessage.__init__( self, 0x0107, session )
+
 class PumpTempBasalRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0115, session )
@@ -549,10 +554,11 @@ class BayerBinaryMessage( object ):
 
         return response
 
-class MedtronicMachine( object ):
+class Medtronic600SeriesDriver( object ):
     USB_BLOCKSIZE = 64
     USB_VID = 0x1a79
     USB_PID = 0x6210
+    MAGIC_HEADER = 'ABC'
 
     CHANNELS = [ 0x14, 0x11, 0x0e, 0x17, 0x1a ] # In the order that the CareLink applet requests them
 
@@ -566,7 +572,7 @@ class MedtronicMachine( object ):
         self.device = None
 
         self.deviceInfo = None
-        self.machine = Machine( model=self, states=MedtronicMachine.states, initial='silent' )
+        self.machine = Machine( model=self, states=Medtronic600SeriesDriver.states, initial='silent' )
 
         self.machine.add_transition( 'commsError', '*', 'error', before='closeDevice' )
         self.machine.add_transition( 'initDevice', 'silent', 'device ready', before='openDevice' )
@@ -596,9 +602,9 @@ class MedtronicMachine( object ):
     def readMessage( self ):
         payload = bytearray()
         while True:
-            data = self.device.read( self.USB_BLOCKSIZE, timeout_ms = 5000 )
+            data = self.device.read( self.USB_BLOCKSIZE, timeout_ms = 10000 )
             if data:
-                if( str( bytearray( data[0:3] ) ) != 'ABC' ):
+                if( str( bytearray( data[0:3] ) ) != self.MAGIC_HEADER ):
                     raise RuntimeError( 'Recieved invalid USB packet')
                 payload.extend( data[4:data[3] + 4] )
                 # TODO - how to deal with messages that finish on the boundary?
@@ -824,8 +830,22 @@ class MedtronicMachine( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
+    def doRemoteSuspend( self ):
+        print "# Execute Remote Suspend"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device time' )
+        mtMessage = SuspendResumeRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        response81 = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x81
+        print binascii.hexlify( response81.payload )
+
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return MedtronicReceiveMessage.decode( response.payload, self.session )
+
 if __name__ == '__main__':
-    mt = MedtronicMachine()
+    mt = Medtronic600SeriesDriver()
     mt.initDevice()
     mt.getDeviceInfo()
     print mt.deviceSerial
@@ -851,8 +871,12 @@ if __name__ == '__main__':
         status.sensorBGLTimestamp.strftime( "%c" ) )
     print "BGL trend: {0}".format( status.trendArrow )
     print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
+    print "Temp basal rate: {0:.3f}U".format( status.tempBasalRate )
+    print "Temp basal percentage: {0}%".format( status.tempBasalPercentage )
     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
+
+    #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
 
     # Commented code to try remote bolusing...
 #    print binascii.hexlify( mt.do405Message( pumpDatetime.encodedDatetime ).responsePayload )
