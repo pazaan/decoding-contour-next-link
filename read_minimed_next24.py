@@ -613,15 +613,15 @@ class Medtronic600SeriesDriver( object ):
             else:
                 raise TimeoutException( 'Timeout waiting for message' )
 
-        #print "READ: " + binascii.hexlify( payload ) # Debugging
+        # print "READ: " + binascii.hexlify( payload ) # Debugging
         return payload
 
     def sendMessage( self, payload ):
         # Split the message into 60 byte chunks
         for packet in [ payload[ i: i+60 ] for i in range( 0, len( payload ), 60 ) ]:
-            message = struct.pack( '>3sB', 'ABC', len( packet ) ) + packet
+            message = struct.pack( '>3sB', self.MAGIC_HEADER, len( packet ) ) + packet
             self.device.write( bytearray( message ) )
-            #print "SEND: " + binascii.hexlify( message ) # Debugging
+            # print "SEND: " + binascii.hexlify( message ) # Debugging
 
     def requestDeviceInfo( self ):
         print "# Request Device Info"
