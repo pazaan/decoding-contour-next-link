@@ -3,7 +3,7 @@
 import requests # pip install requests
 import binascii
 import javaobj
-import StringIO
+import io
 import struct
 import sys
 import getpass
@@ -17,7 +17,7 @@ from read_minimed_next24 import Config, MedtronicMachine
 
 class CareLinkRequest( javaobj.JavaObjectMarshaller ):
     def __init__( self ):
-        self.object_stream = StringIO.StringIO()
+        self.object_stream = io.StringIO()
         self._writeStreamHeader()
 
 class CareLinkKeyRequest( CareLinkRequest ):
@@ -27,7 +27,7 @@ class CareLinkKeyRequest( CareLinkRequest ):
         return self.object_stream.getvalue()
 
     def decodeResponse( self, data ):
-        decoder = javaobj.JavaObjectUnmarshaller( StringIO.StringIO( data ) )
+        decoder = javaobj.JavaObjectUnmarshaller( io.StringIO( data ) )
         int1 = struct.unpack( '>I', decoder.readObject() )[0]
         keyArray = decoder.readObject()
         key = ''.join('{:02x}'.format( x & 0xff ) for x in keyArray )
@@ -52,7 +52,7 @@ class CareLinkHMACRequest( CareLinkRequest ):
         return self.object_stream.getvalue()
 
     def decodeResponse( self, data ):
-        decoder = javaobj.JavaObjectUnmarshaller( StringIO.StringIO( data ) )
+        decoder = javaobj.JavaObjectUnmarshaller( io.StringIO( data ) )
         hmacArray = decoder.readObject()
         hmac = ''.join('{:02x}'.format( x & 0xff ) for x in reversed(hmacArray) )
         return hmac
@@ -120,7 +120,7 @@ if __name__ == '__main__':
                 if mt.deviceSerial == None:
                     raise Exception()
             except Exception:
-                print "Please plug in your Contour NextLink 2.4, and rerun this script"
+                print ("Please plug in your Contour NextLink 2.4, and rerun this script")
                 sys.exit( 1 )
 
             longSerial = str( mt.deviceSerial )
