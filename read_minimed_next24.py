@@ -293,9 +293,14 @@ class MedtronicReceiveMessage( MedtronicMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicMessage.decode( message, session )
+       
+        #print "### MedtronicReceiveMessage response.payload:", binascii.hexlify(response.payload)       
         # TODO - check validity of the envelope
         response.responseEnvelope = str( response.payload[0:22] )
+        #print "### MedtronicReceiveMessage response.responseEnvelope:", binascii.hexlify(response.responseEnvelope)
+        #print "### MedtronicReceiveMessage encryptedResponsePayload:", binascii.hexlify(response.payload[22:])
         decryptedResponsePayload = response.decrypt( str( response.payload[22:] ) )
+        #print "### MedtronicReceiveMessage decryptedResponsePayload:", binascii.hexlify(decryptedResponsePayload)
 
         response.responsePayload = decryptedResponsePayload[0:-2]
 
@@ -380,6 +385,76 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     def datetime( self ):
         dateTimeData = self.encodedDatetime
         return DateTimeHelper.decodeDateTime( dateTimeData )
+
+class PumpHistoryInfoResponseMessage( MedtronicReceiveMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        messageType = struct.unpack( '>H', response.responsePayload[1:3] )[0]
+        if messageType != 0x030D:
+            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x030D, messageType ) )
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpHistoryInfoResponseMessage
+        return response
+
+    @property
+    def historySize( self ):
+        return struct.unpack( '>I', self.responsePayload[4:8] )[0]
+    
+    @property
+    def encodedDatetimeStart( self ):
+        return struct.unpack( '>Q', self.responsePayload[8:16] )[0]
+
+    @property
+    def encodedDatetimeEnd( self ):
+        return struct.unpack( '>Q', self.responsePayload[16:24] )[0]    
+
+    @property
+    def datetimeStart( self ):
+        dateTimeData = self.encodedDatetimeStart
+        return DateTimeHelper.decodeDateTime( dateTimeData )
+
+    @property
+    def datetimeEnd( self ):
+        dateTimeData = self.encodedDatetimeEnd
+        return DateTimeHelper.decodeDateTime( dateTimeData )
+
+class MultiPacketSegment( MedtronicReceiveMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = MultiPacketSegment
+        return response
+
+    @property
+    def messageType( self ):
+        print binascii.hexlify(self.responsePayload[1:3])
+        return struct.unpack( '>H', self.responsePayload[1:3] )[0]
+
+    @property
+    def packetNumber( self ):
+        return struct.unpack( '>H', self.responsePayload[3:5] )[0]
+    
+    @property
+    def payload( self ):
+        return self.responsePayload[5:]
+
+    @property
+    def segmentSize( self ):
+        return struct.unpack( '>I', self.responsePayload[3:7] )[0]
+
+    @property
+    def packetSize( self ):
+        return struct.unpack( '>H', self.responsePayload[7:9] )[0]
+
+    @property
+    def lastPacketSize( self ):
+        return struct.unpack( '>H', self.responsePayload[9:11] )[0]
+
+    @property
+    def packetsToFetch( self ):
+        return struct.unpack( '>H', self.responsePayload[11:13] )[0]
 
 class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     MMOL = 1
@@ -477,6 +552,30 @@ class PumpStatusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0112, session )
 
+class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session):
+        histDataType_PumpData = 0x02 #PUMP_DATA
+        #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
+        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
+        #print binascii.hexlify(payload)
+        MedtronicSendMessage.__init__( self, 0x030C, session, payload )
+
+class PumpHistoryRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        histDataType_PumpData = 0x02 #PUMP_DATA
+        #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
+        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
+        #print binascii.hexlify(payload)
+        MedtronicSendMessage.__init__( self, 0x0304, session, payload )
+
+class AckMultipacketRequestMessage( MedtronicSendMessage ):
+    SEGMENT_COMMAND__INITIATE_TRANSFER = 0xFF00
+    SEGMENT_COMMAND__SEND_NEXT_SEGMENT = 0xFF01
+    
+    def __init__( self, session, segmentCommand ):
+        payload = struct.pack( '>H', segmentCommand )
+        MedtronicSendMessage.__init__( self, 0x00FE, session, payload )
+    
 class BasicNgpParametersRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0138, session )
@@ -553,6 +652,16 @@ class BayerBinaryMessage( object ):
             raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
 
         return response
+    
+    @property
+    def linkDeviceOperation( self ):
+        return struct.unpack( '>B', self.envelope[18] )[0]
+    
+    def checkLinkDeviceOperation( self, expectedValue ):
+        if self.linkDeviceOperation != expectedValue:
+            print "### checkLinkDeviceOperation BayerBinaryMessage.envelope:", binascii.hexlify(self.envelope)
+            print "### checkLinkDeviceOperation BayerBinaryMessage.payload:", binascii.hexlify(self.payload)
+            raise UnexpectedMessageException( "Expected to get linkDeviceOperation {0:x}. Got {1:x}".format( expectedValue, self.linkDeviceOperation ) )
 
 class Medtronic600SeriesDriver( object ):
     USB_BLOCKSIZE = 64
@@ -613,7 +722,7 @@ class Medtronic600SeriesDriver( object ):
             else:
                 raise TimeoutException( 'Timeout waiting for message' )
 
-        # print "READ: " + binascii.hexlify( payload ) # Debugging
+        #print "READ: " + binascii.hexlify( payload ) # Debugging
         return payload
 
     def sendMessage( self, payload ):
@@ -758,6 +867,75 @@ class Medtronic600SeriesDriver( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return PumpStatusResponseMessage.decode( response.payload, self.session )
 
+    def getPumpHistoryInfo( self ):
+        print "# Get Pump History Info"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
+        mtMessage = PumpHistoryInfoRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
+
+    def getPumpHistory( self, expectedSize ):
+        print "# Get Pump History"
+        if self.state != 'EHSM session':
+            raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
+        mtMessage = PumpHistoryRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        readingFinished = False
+        while readingFinished != True:
+            response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+            responseSegment = MultiPacketSegment.decode(response.payload, self.session)
+            #print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
+            print "## getPumpHistory responseSegment.messageType:", responseSegment.messageType
+            
+            if responseSegment.messageType == 0x0412:
+                print "## getPumpHistory consumed HIGH_SPEED_MODE_COMMAND"
+                    
+            elif responseSegment.messageType == 0xFF00:
+                print "## getPumpHistory got INITIATE_MULTIPACKET_TRANSFER"
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize:", responseSegment.segmentSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize:", responseSegment.packetSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.lastPacketSize:", responseSegment.lastPacketSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetsToFetch:", responseSegment.packetsToFetch
+                segmentParams = responseSegment
+                packets = [None] * responseSegment.packetsToFetch
+                numPackets = 0
+                ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__INITIATE_TRANSFER)
+                bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
+                self.sendMessage( bayerAckMessage.encode() )
+                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+            elif responseSegment.messageType == 0xFF01:
+                print "## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION"
+                print "## getPumpHistory responseSegment.packetNumber:", responseSegment.packetNumber
+                #print "## getPumpHistory responseSegment.payload:", binascii.hexlify(responseSegment.payload)
+                if packets[responseSegment.packetNumber] == None:
+                    numPackets = numPackets + 1
+                    packets[responseSegment.packetNumber] = responseSegment.payload
+                else:
+                    print "## WARNING - packet duplicated"
+                    
+                if numPackets == segmentParams.packetsToFetch:
+                    print "## All packets there"
+                    print "## Requesting next segment"
+                    ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__SEND_NEXT_SEGMENT)
+                    bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
+                    self.sendMessage( bayerAckMessage.encode() )
+                    BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+            elif responseSegment.messageType == 0x030A:
+                print "## getPumpHistory got END_HISTORY_TRANSMISSION"
+                readingFinished = True
+            else:          
+                print "## getPumpHistory !!! UNKNOWN MESSAGE !!!"
+                print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
+        #return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
+
     def getTempBasalStatus( self ):
         print "# Get Temp Basal Status"
         if self.state != 'EHSM session':
@@ -847,35 +1025,48 @@ class Medtronic600SeriesDriver( object ):
 if __name__ == '__main__':
     mt = Medtronic600SeriesDriver()
     mt.initDevice()
-    mt.getDeviceInfo()
-    print mt.deviceSerial
-    mt.controlMode()
-    mt.passthroughMode()
-    mt.openConnection()
-    mt.readInfo()
-    mt.getLinkKey()
-    mt.negotiateChannel()
-    mt.beginEHSM()
-
-    print binascii.hexlify( mt.getBasicParameters().responsePayload )
-    pumpDatetime = mt.getPumpTime()
-    print pumpDatetime.encodedDatetime
-    print "{0:x}".format(pumpDatetime.encodedDatetime)
-    print pumpDatetime.datetime.strftime( "Pump time is: %c" )
-
-    status = mt.getPumpStatus()
-    print binascii.hexlify( status.responsePayload )
-    print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
-    print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
-        status.sensorBGL / 18.016,
-        status.sensorBGLTimestamp.strftime( "%c" ) )
-    print "BGL trend: {0}".format( status.trendArrow )
-    print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
-    print "Temp basal rate: {0:.3f}U".format( status.tempBasalRate )
-    print "Temp basal percentage: {0}%".format( status.tempBasalPercentage )
-    print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
-    print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
-
+    try:
+        mt.getDeviceInfo()
+        print mt.deviceSerial
+        mt.controlMode()
+        mt.passthroughMode()
+        mt.openConnection()
+        mt.readInfo()
+        mt.getLinkKey()
+        mt.negotiateChannel()
+        mt.beginEHSM()
+    
+        print binascii.hexlify( mt.getBasicParameters().responsePayload )
+        pumpDatetime = mt.getPumpTime()
+        print pumpDatetime.encodedDatetime
+        print "{0:x}".format(pumpDatetime.encodedDatetime)
+        print pumpDatetime.datetime.strftime( "Pump time is: %c" )
+    
+        
+    #     status = mt.getPumpStatus()
+    #     print binascii.hexlify( status.responsePayload )
+    #     print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
+    #     print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
+    #         status.sensorBGL / 18.016,
+    #         status.sensorBGLTimestamp.strftime( "%c" ) )
+    #     print "BGL trend: {0}".format( status.trendArrow )
+    #     print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
+    #     print "Temp basal rate: {0:.3f}U".format( status.tempBasalRate )
+    #     print "Temp basal percentage: {0}%".format( status.tempBasalPercentage )
+    #     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
+    #     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
+        
+        print "Getting history info"
+        historyInfo = mt.getPumpHistoryInfo()
+        print binascii.hexlify( historyInfo.responsePayload )
+        print historyInfo.datetimeStart;
+        print historyInfo.datetimeEnd;
+        print historyInfo.historySize;
+        
+        print "Getting history"
+        history = mt.getPumpHistory(historyInfo.historySize)
+    finally:
+        mt.closeDevice()
     #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
 
     # Commented code to try remote bolusing...
