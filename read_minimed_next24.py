@@ -14,6 +14,11 @@ import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
 import hashlib
 import re
+import pickle
+import itertools as IT
+import lzo
+from pump_history_parser import NGPHistoryEvent
+from helpers import DateTimeHelper
 
 ascii= {
     'ACK' : 0x06,
@@ -90,30 +95,6 @@ class Config( object ):
         self.c.execute( "UPDATE config SET key = ? WHERE stick_serial = ?", ( value, self.stickSerial ) )
         self.conn.commit()
         self.loadConfig( self.stickSerial )
-
-class DateTimeHelper( object ):
-    @staticmethod
-    def decodeDateTime( pumpDateTime ):
-        rtc = ( pumpDateTime >> 32 ) & 0xffffffff
-        offset = ( pumpDateTime & 0xffffffff ) - 0x100000000
-
-        # Base time is midnight 1st Jan 2000 (UTC)
-        baseTime = 946684800;
-
-        # The time from the pump represents epochTime in UTC, but we treat it as if it were in our own timezone
-        # We do this, because the pump does not have a concept of timezone
-        # For example, if baseTime + rtc + offset was 1463137668, this would be
-        # Fri, 13 May 2016 21:07:48 UTC.
-        # However, the time the pump *means* is Fri, 13 May 2016 21:07:48 in our own timezone
-        offsetFromUTC = int(datetime.datetime.utcnow().strftime('%s')) - int(datetime.datetime.now().strftime('%s'))
-        epochTime = baseTime + rtc + offset + offsetFromUTC
-        if epochTime < 0:
-            epochTime = 0
-
-        # Return a non-naive datetime in the local timezone
-        # (so that we can convert to UTC for Nightscout later)
-        localTz = tz.tzlocal()
-        return datetime.datetime.fromtimestamp( epochTime, localTz )
 
 class MedtronicSession( object ):
     radioChannel = None
@@ -881,6 +862,7 @@ class Medtronic600SeriesDriver( object ):
 
     def getPumpHistory( self, expectedSize ):
         print "# Get Pump History"
+        allSegments = []
         if self.state != 'EHSM session':
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
         mtMessage = PumpHistoryRequestMessage( self.session )
@@ -924,6 +906,7 @@ class Medtronic600SeriesDriver( object ):
                 if numPackets == segmentParams.packetsToFetch:
                     print "## All packets there"
                     print "## Requesting next segment"
+                    allSegments.append(packets)
                     ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__SEND_NEXT_SEGMENT)
                     bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                     self.sendMessage( bayerAckMessage.encode() )
@@ -934,7 +917,88 @@ class Medtronic600SeriesDriver( object ):
             else:          
                 print "## getPumpHistory !!! UNKNOWN MESSAGE !!!"
                 print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
+        return allSegments
         #return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
+        
+    def decodePumpSegment(self, encodedFragmentedSegment):
+        decodedBlocks = []
+        segmentPayload = encodedFragmentedSegment[0]
+        
+        for idx in range(1, len(encodedFragmentedSegment)):        
+            segmentPayload+= encodedFragmentedSegment[idx]
+
+        joined = IT.chain(encodedFragmentedSegment[0:1])
+        #print "Merged string:\n", binascii.hexlify(segmentPayload)
+        
+        
+        # Decompress the message
+        if struct.unpack( '>H', segmentPayload[0:2])[0] == 0x030E:
+            HEADER_SIZE = 12
+            BLOCK_SIZE = 2048
+            # It's an UnmergedHistoryUpdateCompressed response. We need to decompress it
+            dataType = struct.unpack('>B', segmentPayload[2:3])[0] # Returns a HISTORY_DATA_TYPE
+            historySizeCompressed = struct.unpack( '>I', segmentPayload[3:7])[0] #segmentPayload.readUInt32BE(0x03)
+            print "Compressed: ", historySizeCompressed 
+            historySizeUncompressed = struct.unpack( '>I', segmentPayload[7:11])[0] #segmentPayload.readUInt32BE(0x07)
+            print "Uncompressed: ", historySizeUncompressed 
+            historyCompressed = struct.unpack('>B', segmentPayload[11:12])[0]
+            print "IsCompressed: ", historyCompressed 
+
+            if dataType != 0x02: # Check HISTORY_DATA_TYPE (PUMP_DATA: 2, SENSOR_DATA: 3)
+                print 'History type in response: ', type(dataType), binascii.hexlify(dataType) 
+                raise InvalidMessageError('Unexpected history type in response')
+
+            # Check that we have the correct number of bytes in this message
+            if len(segmentPayload) - HEADER_SIZE != historySizeCompressed:
+                raise InvalidMessageError('Unexpected message size')
+
+
+            blockPayload = None
+            if historyCompressed > 0:
+                #print "Compressed content:\n", binascii.hexlify(segmentPayload[HEADER_SIZE:])
+                blockPayload = lzo.decompress(segmentPayload[HEADER_SIZE:], False, historySizeUncompressed)
+            else:
+                blockPayload = segmentPayload[HEADER_SIZE:]
+
+
+            if len(blockPayload) % BLOCK_SIZE != 0:
+                raise InvalidMessageError('Block payload size is not a multiple of 2048')
+
+
+            for i in range (0, len(blockPayload) / BLOCK_SIZE):
+                blockSize = struct.unpack('>H', blockPayload[(i + 1) * BLOCK_SIZE - 4 : (i + 1) * BLOCK_SIZE - 2])[0] #blockPayload.readUInt16BE(((i + 1) * ReadHistoryCommand.BLOCK_SIZE) - 4)
+                blockChecksum = struct.unpack('>H', blockPayload[(i + 1) * BLOCK_SIZE - 2 : (i + 1) * BLOCK_SIZE])[0] #blockPayload.readUInt16BE(((i + 1) * ReadHistoryCommand.BLOCK_SIZE) - 2)
+
+                blockStart = i * BLOCK_SIZE
+                blockData = blockPayload[blockStart : blockStart + blockSize]
+                calculatedChecksum = MedtronicMessage.calculateCcitt(blockData)
+                if blockChecksum != calculatedChecksum:
+                    raise ChecksumError('Unexpected checksum in block')
+                else:
+                    decodedBlocks.append(blockData) 
+        else:
+            raise InvalidMessageError('Unknown history response message type')
+        
+        return decodedBlocks
+    
+    def decodeEvents(self, decodedBlocks):
+        eventList = []
+        for page in decodedBlocks:
+            pos = 0;
+    
+            while pos < len(page):
+                eventSize = struct.unpack('>B', page[pos + 2 : pos + 3])[0] # page[pos + 2];
+                eventData = page[pos : pos + eventSize] # page.slice(pos, pos + eventSize);
+                pos += eventSize
+                eventList.append(NGPHistoryEvent(eventData).eventInstance())
+        return eventList
+                
+    def processPumpHistory( self, historySegments):
+        historyEvents = []
+        for segment in historySegments:
+            decodedBlocks = self.decodePumpSegment(segment)
+            historyEvents += self.decodeEvents(decodedBlocks) 
+        return historyEvents
 
     def getTempBasalStatus( self ):
         print "# Get Temp Basal Status"
@@ -1064,9 +1128,23 @@ if __name__ == '__main__':
         print historyInfo.historySize;
         
         print "Getting history"
-        history = mt.getPumpHistory(historyInfo.historySize)
+        history_pages = mt.getPumpHistory(historyInfo.historySize)
+
+        #with open('hisory_data.dat', 'wb') as output:
+        #    pickle.dump(history, output)
+
+        events = mt.processPumpHistory(history_pages)
+        print "# All events:"
+        for ev in events:
+    #        if ev.eventType == NGPHistoryEvent.EVENT_TYPE.BG_READING:
+            if isinstance(ev, BloodGlucoseReadingEvent):
+                print ev
+        print "# End events"
+        
     finally:
         mt.closeDevice()
+        
+        
     #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
 
     # Commented code to try remote bolusing...
