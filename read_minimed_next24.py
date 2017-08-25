@@ -18,6 +18,7 @@ import pickle
 import itertools as IT
 import lzo
 from pump_history_parser import NGPHistoryEvent
+from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
 
 ascii= {
@@ -367,6 +368,12 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
         dateTimeData = self.encodedDatetime
         return DateTimeHelper.decodeDateTime( dateTimeData )
 
+    @property
+    def offset( self ):
+        dateTimeData = self.encodedDatetime
+        return DateTimeHelper.decodeDateTimeOffset( dateTimeData )
+
+
 class PumpHistoryInfoResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
@@ -410,7 +417,7 @@ class MultiPacketSegment( MedtronicReceiveMessage ):
 
     @property
     def messageType( self ):
-        print binascii.hexlify(self.responsePayload[1:3])
+        #print "MultiPacketSegment.messageType: ", binascii.hexlify(self.responsePayload[1:3])
         return struct.unpack( '>H', self.responsePayload[1:3] )[0]
 
     @property
@@ -525,6 +532,11 @@ class BeginEHSMMessage( MedtronicSendMessage ):
         payload = struct.pack( '>B', 0x00 )
         MedtronicSendMessage.__init__( self, 0x0412, session, payload )
 
+class FinishEHSMMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        payload = struct.pack( '>B', 0x01 )
+        MedtronicSendMessage.__init__( self, 0x0412, session, payload )
+
 class PumpTimeRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, 0x0403, session )
@@ -534,18 +546,25 @@ class PumpStatusRequestMessage( MedtronicSendMessage ):
         MedtronicSendMessage.__init__( self, 0x0112, session )
 
 class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
-    def __init__( self, session):
+    def __init__( self, session, dateStart, dateEnd, dateOffset):
         histDataType_PumpData = 0x02 #PUMP_DATA
         #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
-        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
+        fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
+        toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
+        print '{0:x} {1:x}'.format(fromRtc, toRtc)
+        #print '{0} {1}'.format(DateTimeHelper.decodeDateTime(fromRtc, dateOffset), DateTimeHelper.decodeDateTime(toRtc, dateOffset))
+        #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
+        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
         #print binascii.hexlify(payload)
         MedtronicSendMessage.__init__( self, 0x030C, session, payload )
 
 class PumpHistoryRequestMessage( MedtronicSendMessage ):
-    def __init__( self, session ):
+    def __init__( self, session, dateStart, dateEnd, dateOffset ):
         histDataType_PumpData = 0x02 #PUMP_DATA
-        #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
-        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
+        fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
+        toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
+        payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
+        #payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, 0x00000000, 0xFFFFFFFF, 0x00 )
         #print binascii.hexlify(payload)
         MedtronicSendMessage.__init__( self, 0x0304, session, payload )
 
@@ -656,6 +675,7 @@ class Medtronic600SeriesDriver( object ):
         'open connection', 'read info', 'read link key', 'negotiate channel', 'EHSM session', 'error' ]
 
     session = None
+    offset = -1592387759; #just read out of my pump. Shall be overwritten by reading date/time from pump
 
     def __init__( self ):
         self.session = MedtronicSession()
@@ -670,11 +690,18 @@ class Medtronic600SeriesDriver( object ):
         self.machine.add_transition( 'getDeviceInfo', 'device info', 'device info', before='requestDeviceInfo', after='readDeviceInfo' )
         self.machine.add_transition( 'controlMode', 'device info', 'control mode', before='enterControlMode' )
         self.machine.add_transition( 'passthroughMode', 'control mode', 'passthrough mode', before='enterPassthroughMode' )
+        self.machine.add_transition( 'endPassthroughMode', 'passthrough mode', 'control mode', before='exitPassthroughMode' )
+        self.machine.add_transition( 'endControlMode', 'control mode', 'device info', before='exitControlMode' )
         self.machine.add_transition( 'openConnection', 'passthrough mode', 'open connection', before='requestOpenConnection' )
+        self.machine.add_transition( 'closeConnection', 'open connection', 'passthrough mode', before='requestCloseConnection' )
+        self.machine.add_transition( 'closeConnection', 'read info', 'passthrough mode', before='requestCloseConnection' )
+        self.machine.add_transition( 'closeConnection', 'read link key', 'passthrough mode', before='requestCloseConnection' )
+        self.machine.add_transition( 'closeConnection', 'negotiate channel', 'passthrough mode', before='requestCloseConnection' )
         self.machine.add_transition( 'readInfo', 'open connection', 'read info', before='requestReadInfo' )
         self.machine.add_transition( 'getLinkKey', 'read info', 'read link key', before='requestReadLinkKey' )
         self.machine.add_transition( 'negotiateChannel', 'read link key', 'negotiate channel', before='doNegotiateChannel' )
         self.machine.add_transition( 'beginEHSM', 'negotiate channel', 'EHSM session', before='sendBeginEHSM' )
+        self.machine.add_transition( 'finishEHSM', 'EHSM session', 'negotiate channel', before='sendFinishEHSM' )
 
     def openDevice( self ):
         print "# Opening device"
@@ -745,16 +772,28 @@ class Medtronic600SeriesDriver( object ):
     def checkControlMessage( self, controlChar ):
         msg = self.readMessage()
         if not ( len( msg ) == 1 and msg[0] == controlChar ):
-            raise RuntimeError( 'Expected to get an {0} control character'.format( hex( controlChar ) ) )
+            print ' ### checkControlMessage: Expected to get an 0x{0:x} control character, got message with length {1} and control char 0x{1:x}'.format( controlChar, len( msg ), msg[0] )
+            raise RuntimeError( 'Expected to get an 0x{0:x} control character, got message with length {1} and control char 0x{1:x}'.format( controlChar, len( msg ), msg[0] ) )
 
     def enterControlMode( self ):
+        print "# enterControlMode"
         # TODO - should this be a mini FSM?
         self.sendMessage( struct.pack( '>B', ascii['NAK'] ) )
         self.checkControlMessage( ascii['EOT'] )
         self.sendMessage( struct.pack( '>B', ascii['ENQ'] ) )
         self.checkControlMessage( ascii['ACK'] )
 
+    def exitControlMode( self ):
+        print "# exitControlMode"
+        # TODO - should this be a mini FSM?
+        try:
+            self.sendMessage( struct.pack( '>B', ascii['EOT'] ) )
+            self.checkControlMessage( ascii['ENQ'] )
+        except:
+            print "Unexpected error by exitControlMode, ignoring:", sys.exc_info()[0]        
+
     def enterPassthroughMode( self ):
+        print "# enterPassthroughMode"
         # TODO - should this be a mini FSM?
         self.sendMessage( struct.pack( '>2s', 'W|' ) )
         self.checkControlMessage( ascii['ACK'] )
@@ -763,6 +802,22 @@ class Medtronic600SeriesDriver( object ):
         self.sendMessage( struct.pack( '>2s', '1|' ) )
         self.checkControlMessage( ascii['ACK'] )
 
+    def exitPassthroughMode( self ):
+        print "# exitPassthroughMode"
+        # TODO - should this be a mini FSM?
+        try:
+            print " ## 1"
+            self.sendMessage( struct.pack( '>2s', 'W|' ) )
+            self.checkControlMessage( ascii['ACK'] )
+            print " ## 2"
+            self.sendMessage( struct.pack( '>2s', 'Q|' ) )
+            self.checkControlMessage( ascii['ACK'] )
+            print " ## 3"
+            self.sendMessage( struct.pack( '>2s', '0|' ) )
+            self.checkControlMessage( ascii['ACK'] )
+        except:
+            print "Unexpected error by exitPassthroughMode, ignoring:", sys.exc_info()[0]        
+
     def requestOpenConnection( self ):
         print "# Request Open Connection"
 
@@ -770,6 +825,16 @@ class Medtronic600SeriesDriver( object ):
         bayerMessage = BayerBinaryMessage( 0x10, self.session, mtMessage )
         self.sendMessage( bayerMessage.encode() )
         message = self.readMessage()
+
+    def requestCloseConnection( self ):
+        print "# Request Close Connection"
+        try:
+            mtMessage = binascii.unhexlify( self.session.HMAC )
+            bayerMessage = BayerBinaryMessage( 0x11, self.session, mtMessage )
+            self.sendMessage( bayerMessage.encode() )
+            message = self.readMessage()
+        except:
+            print "Unexpected error by requestCloseConnection, ignoring:", sys.exc_info()[0]
 
     def requestReadInfo( self ):
         print "# Request Read Info"
@@ -799,7 +864,7 @@ class Medtronic600SeriesDriver( object ):
 
             bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
             self.sendMessage( bayerMessage.encode() )
-            self.readMessage() # Read the 0x81
+            BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
             if len( response.payload ) > 13:
                 # Check that the channel ID matches
@@ -822,7 +887,22 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # The Begin EHSM only has an 0x81 response.
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # The Begin EHSM only has an 0x81 response.
+
+    def sendFinishEHSM( self ):
+        print "# Finish Extended High Speed Mode Session"
+        try:
+            mtMessage = FinishEHSMMessage( self.session )
+    
+            bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+            self.sendMessage( bayerMessage.encode() )
+            try:
+                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # The Finish EHSM only has an 0x81 response.
+            except:
+                # if does not come, ignore...
+                pass
+        except:
+            print "Unexpected error by finishEHSM, ignoring:", sys.exc_info()[0]
 
     def getPumpTime( self ):
         print "# Get Pump Time"
@@ -832,9 +912,11 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        return PumpTimeResponseMessage.decode( response.payload, self.session )
+        result = PumpTimeResponseMessage.decode( response.payload, self.session )
+        self.offset = result.offset;
+        return result
 
     def getPumpStatus( self ):
         print "# Get Pump Status"
@@ -844,15 +926,15 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return PumpStatusResponseMessage.decode( response.payload, self.session )
 
-    def getPumpHistoryInfo( self ):
+    def getPumpHistoryInfo( self, dateStart, dateEnd ):
         print "# Get Pump History Info"
         if self.state != 'EHSM session':
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
-        mtMessage = PumpHistoryInfoRequestMessage( self.session )
+        mtMessage = PumpHistoryInfoRequestMessage( self.session, dateStart, dateEnd, self.offset )
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
@@ -860,32 +942,40 @@ class Medtronic600SeriesDriver( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
 
-    def getPumpHistory( self, expectedSize ):
+    def getPumpHistory( self, expectedSize, dateStart, dateEnd ):
         print "# Get Pump History"
         allSegments = []
         if self.state != 'EHSM session':
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
-        mtMessage = PumpHistoryRequestMessage( self.session )
+        mtMessage = PumpHistoryRequestMessage( self.session, dateStart, dateEnd, self.offset  )
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
         BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         readingFinished = False
         while readingFinished != True:
-            response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+            response = None
+            try:
+                response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+            except TimeoutException:
+                # a bit hacky, but seems that countour link sometimes sends some unexpected packages after END_HISTORY_TRANSMISSION
+                # and these have to be consumed, otherwise we cannot make clean exit or continue the transmission
+                readingFinished = True
+                continue
+                
             responseSegment = MultiPacketSegment.decode(response.payload, self.session)
             #print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
-            print "## getPumpHistory responseSegment.messageType:", responseSegment.messageType
+            #print "## getPumpHistory responseSegment.messageType:", responseSegment.messageType
             
             if responseSegment.messageType == 0x0412:
-                print "## getPumpHistory consumed HIGH_SPEED_MODE_COMMAND"
-                    
+                #print "## getPumpHistory consumed HIGH_SPEED_MODE_COMMAND"
+                pass
             elif responseSegment.messageType == 0xFF00:
                 print "## getPumpHistory got INITIATE_MULTIPACKET_TRANSFER"
-                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize:", responseSegment.segmentSize
-                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize:", responseSegment.packetSize
-                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.lastPacketSize:", responseSegment.lastPacketSize
-                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetsToFetch:", responseSegment.packetsToFetch
+#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize:", responseSegment.segmentSize
+#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize:", responseSegment.packetSize
+#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.lastPacketSize:", responseSegment.lastPacketSize
+#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetsToFetch:", responseSegment.packetsToFetch
                 segmentParams = responseSegment
                 packets = [None] * responseSegment.packetsToFetch
                 numPackets = 0
@@ -894,7 +984,7 @@ class Medtronic600SeriesDriver( object ):
                 self.sendMessage( bayerAckMessage.encode() )
                 BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             elif responseSegment.messageType == 0xFF01:
-                print "## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION"
+#                 print "## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION"
                 print "## getPumpHistory responseSegment.packetNumber:", responseSegment.packetNumber
                 #print "## getPumpHistory responseSegment.payload:", binascii.hexlify(responseSegment.payload)
                 if packets[responseSegment.packetNumber] == None:
@@ -913,7 +1003,7 @@ class Medtronic600SeriesDriver( object ):
                     BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             elif responseSegment.messageType == 0x030A:
                 print "## getPumpHistory got END_HISTORY_TRANSMISSION"
-                readingFinished = True
+                #readingFinished = True
             else:          
                 print "## getPumpHistory !!! UNKNOWN MESSAGE !!!"
                 print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
@@ -1008,7 +1098,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1020,7 +1110,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1032,7 +1122,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1044,7 +1134,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1056,7 +1146,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1068,7 +1158,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        self.readMessage() # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1086,27 +1176,47 @@ class Medtronic600SeriesDriver( object ):
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
-if __name__ == '__main__':
+def downloadPumpSession(downloadOperations):
     mt = Medtronic600SeriesDriver()
     mt.initDevice()
     try:
         mt.getDeviceInfo()
         print mt.deviceSerial
         mt.controlMode()
-        mt.passthroughMode()
-        mt.openConnection()
-        mt.readInfo()
-        mt.getLinkKey()
-        mt.negotiateChannel()
-        mt.beginEHSM()
-    
-        print binascii.hexlify( mt.getBasicParameters().responsePayload )
-        pumpDatetime = mt.getPumpTime()
-        print pumpDatetime.encodedDatetime
-        print "{0:x}".format(pumpDatetime.encodedDatetime)
-        print pumpDatetime.datetime.strftime( "Pump time is: %c" )
-    
-        
+        try:
+            mt.passthroughMode()
+            try:
+                mt.openConnection()
+                try:
+                    mt.readInfo()
+                    mt.getLinkKey()
+                    try:
+                        mt.negotiateChannel()
+                    except:
+                        print "Cannot connect to the pump. Abandoning"
+                        return
+                    mt.beginEHSM()
+                    try:    
+                        #we need to read always the pump time to store the offset for later messeging
+                        pumpDatetime = mt.getPumpTime()
+                        print "{0:x} {1}".format(pumpDatetime.encodedDatetime, pumpDatetime.datetime)
+                        try:
+                            downloadOperations(mt)
+                        except:
+                            print "Unexpected error in client downloadOperations:", sys.exc_info()[0]
+                            raise
+                    finally:
+                         mt.finishEHSM()
+                finally:
+                    mt.closeConnection()
+            finally:
+                mt.endPassthroughMode()
+        finally:
+            mt.endControlMode()
+    finally:
+        mt.closeDevice()
+
+def pumpDownload(mt):
     #     status = mt.getPumpStatus()
     #     print binascii.hexlify( status.responsePayload )
     #     print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
@@ -1120,29 +1230,31 @@ if __name__ == '__main__':
     #     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
     #     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
         
-        print "Getting history info"
-        historyInfo = mt.getPumpHistoryInfo()
-        print binascii.hexlify( historyInfo.responsePayload )
-        print historyInfo.datetimeStart;
-        print historyInfo.datetimeEnd;
-        print historyInfo.historySize;
-        
-        print "Getting history"
-        history_pages = mt.getPumpHistory(historyInfo.historySize)
+    print "Getting history info"
+    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max)
+    print binascii.hexlify( historyInfo.responsePayload,  )
+    print historyInfo.datetimeStart;
+    print historyInfo.datetimeEnd;
+    print historyInfo.historySize;
+    
+    print "Getting history"
+    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2017, 8, 23), datetime.datetime.max)
 
-        #with open('hisory_data.dat', 'wb') as output:
-        #    pickle.dump(history, output)
+    #with open('hisory_data.dat', 'wb') as output:
+    #    pickle.dump(history, output)
 
-        events = mt.processPumpHistory(history_pages)
-        print "# All events:"
-        for ev in events:
-    #        if ev.eventType == NGPHistoryEvent.EVENT_TYPE.BG_READING:
-            if isinstance(ev, BloodGlucoseReadingEvent):
-                print ev
-        print "# End events"
+    events = mt.processPumpHistory(history_pages)
+    print "# All events:"
+    for ev in events:
+        if isinstance(ev, BloodGlucoseReadingEvent):
+            print ev
+    print "# End events"
+    
+
+if __name__ == '__main__':
+    downloadPumpSession(pumpDownload)
+    
         
-    finally:
-        mt.closeDevice()
         
         
     #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
