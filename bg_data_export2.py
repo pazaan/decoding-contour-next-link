@@ -60,7 +60,7 @@ class LatestActivity (object):
         events = mt.processPumpHistory(history_pages)
         print "# All events:"
         for ev in events:
-            if isinstance(ev, BloodGlucoseReadingEvent):
+            if isinstance(ev, BloodGlucoseReadingEvent) and ev.timestamp > startdate:
                 print "Writing: ", ev
                 to_write = {
                     "timestamp": ev.timestamp,
