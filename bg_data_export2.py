@@ -43,8 +43,8 @@ class LatestActivity (object):
             }
 
     def historyDownload(self, mt):
-        enddate=datetime.now()
-        startdate=self.get_max_bg_record()
+        enddate=datetime.now().replace(tzinfo=None)
+        startdate=self.get_max_bg_record().replace(tzinfo=None)
         print "Download from {0} to {1}".format(startdate, enddate)
 
         
@@ -60,7 +60,7 @@ class LatestActivity (object):
         events = mt.processPumpHistory(history_pages)
         print "# All events:"
         for ev in events:
-            if isinstance(ev, BloodGlucoseReadingEvent) and ev.timestamp > startdate:
+            if isinstance(ev, BloodGlucoseReadingEvent) and ev.timestamp.replace(tzinfo=None) > startdate:
                 print "Writing: ", ev
                 to_write = {
                     "timestamp": ev.timestamp,
