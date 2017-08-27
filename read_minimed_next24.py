@@ -795,7 +795,7 @@ class Medtronic600SeriesDriver( object ):
         try:
             self.sendMessage( struct.pack( '>B', ascii['EOT'] ) )
             self.checkControlMessage( ascii['ENQ'] )
-        except Exception, e:
+        except Exception:
             logger.warning("Unexpected error by exitControlMode, ignoring", exc_info = True);
 
     def enterPassthroughMode( self ):
@@ -818,7 +818,7 @@ class Medtronic600SeriesDriver( object ):
             self.checkControlMessage( ascii['ACK'] )
             self.sendMessage( struct.pack( '>2s', '0|' ) )
             self.checkControlMessage( ascii['ACK'] )
-        except Exception, e:
+        except Exception:
             logger.warning("Unexpected error by exitPassthroughMode, ignoring", exc_info = True);
 
     def requestOpenConnection( self ):
@@ -836,7 +836,7 @@ class Medtronic600SeriesDriver( object ):
             bayerMessage = BayerBinaryMessage( 0x11, self.session, mtMessage )
             self.sendMessage( bayerMessage.encode() )
             self.readMessage()
-        except Exception, e:
+        except Exception:
             logger.warning("Unexpected error by requestCloseConnection, ignoring", exc_info = True);
 
     def requestReadInfo( self ):
@@ -904,7 +904,7 @@ class Medtronic600SeriesDriver( object ):
             except:
                 # if does not come, ignore...
                 pass
-        except Exception, e:
+        except Exception:
             logger.warning("Unexpected error by finishEHSM, ignoring", exc_info = True);
 
     def getPumpTime( self ):
@@ -993,13 +993,16 @@ class Medtronic600SeriesDriver( object ):
                 BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             elif responseSegment.messageType == 0xFF01:
                 logger.debug("## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION")
-                logger.warning("## getPumpHistory responseSegment.packetNumber: {0}".format(responseSegment.packetNumber))
+                logger.debug("## getPumpHistory responseSegment.packetNumber: {0}".format(responseSegment.packetNumber))
                 if responseSegment.packetNumber != (segmentParams.packetsToFetch - 1) and len(responseSegment.payload) != segmentParams.packetSize:                
                     logger.warning("## WARNING - packet length invalid, skipping. Expected {0}, got {1}, for packet {2}/{3}".format(segmentParams.packetSize, len(responseSegment.payload), responseSegment.packetNumber, responseSegment.segmentParams))
                     continue
                 if responseSegment.packetNumber == segmentParams.packetsToFetch - 1 and len(responseSegment.payload) != segmentParams.lastPacketSize:                
                     logger.warning("## WARNING - last packet length invalid, skipping. Expected {0}, got {1}, for packet {2}/{3}".format(segmentParams.lastPacketSize, len(responseSegment.payload), responseSegment.packetNumber, responseSegment.segmentParams))
                     continue
+                if responseSegment.packetNumber < 0 or responseSegment.packetNumber >= segmentParams.packetsToFetch:
+                    logger.warning("## WARNING - received packed out of expected range. Packet {2}/{3}".format(responseSegment.packetNumber, responseSegment.segmentParams))
+                    continue                    
                 if packets[responseSegment.packetNumber] == None:
                     numPackets = numPackets + 1
                     packets[responseSegment.packetNumber] = responseSegment.payload
@@ -1010,6 +1013,8 @@ class Medtronic600SeriesDriver( object ):
                     logger.debug("## All packets there")
                     logger.debug("## Requesting next segment")
                     allSegments.append(packets)
+                    
+                    #request next segment
                     ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__SEND_NEXT_SEGMENT)
                     bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                     self.sendMessage( bayerAckMessage.encode() )
@@ -1213,7 +1218,7 @@ def downloadPumpSession(downloadOperations):
                         pumpDatetime = mt.getPumpTime()
                         try:
                             downloadOperations(mt)
-                        except Exception, e:
+                        except Exception:
                             logger.error("Unexpected error in client downloadOperations", exc_info = True)
                             raise
                     finally:
@@ -1249,7 +1254,7 @@ def pumpDownload(mt):
     print " Size: {0}".format(historyInfo.historySize);
     
     print "Getting history"
-    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2017, 8, 23), datetime.datetime.max)
+    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max)
 
     # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
     #with open('hisory_data.dat', 'wb') as output:
