@@ -1215,7 +1215,7 @@ def downloadPumpSession(downloadOperations):
                     mt.beginEHSM()
                     try:    
                         #we need to read always the pump time to store the offset for later messeging
-                        pumpDatetime = mt.getPumpTime()
+                        mt.getPumpTime()
                         try:
                             downloadOperations(mt)
                         except Exception:
