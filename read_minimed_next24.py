@@ -1245,10 +1245,10 @@ def pumpDownload(mt):
     
     print "Getting history info"
     historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max)
-    print binascii.hexlify( historyInfo.responsePayload,  )
-    print historyInfo.datetimeStart;
-    print historyInfo.datetimeEnd;
-    print historyInfo.historySize;
+    #print binascii.hexlify( historyInfo.responsePayload,  )
+    print " Start: {0}".format(historyInfo.datetimeStart)
+    print " End: {0}".format(historyInfo.datetimeEnd);
+    print " Size: {0}".format(historyInfo.historySize);
     
     print "Getting history"
     history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2017, 8, 23), datetime.datetime.max)
