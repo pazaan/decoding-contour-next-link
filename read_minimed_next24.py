@@ -1,20 +1,16 @@
 #!/usr/bin/env python
 
-<<<<<<< HEAD
 import logging
 from sys import exc_info
 #logging.basicConfig has to be before astm import, otherwise logs don't appear
 logging.basicConfig(level=logging.DEBUG)
 #just to avoid flooding events from transitions module
 logging.getLogger('transitions').setLevel(logging.WARNING)
-import hid # pip install hidapi - Platform independant
-=======
 # a nasty workaround on missing hidapi.dll on my windows (allows testing from saved files, but not download of pump)
 try:
     import hid # pip install hidapi - Platform independant
 except WindowsError:
     pass
->>>>>>> 632b5018ec558a1a01122726318073e05596e66b
 import astm # pip install astm
 from transitions import Machine # pip install transitions
 import struct
@@ -26,13 +22,8 @@ import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
 import hashlib
 import re
-<<<<<<< HEAD
-import pickle
-import lzo
-=======
 #import pickle # needed for local history export
 import lzo #pip install python-lzo
->>>>>>> 632b5018ec558a1a01122726318073e05596e66b
 from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
@@ -846,15 +837,9 @@ class Medtronic600SeriesDriver( object ):
             mtMessage = binascii.unhexlify( self.session.HMAC )
             bayerMessage = BayerBinaryMessage( 0x11, self.session, mtMessage )
             self.sendMessage( bayerMessage.encode() )
-<<<<<<< HEAD
-            message = self.readMessage()
+            self.readMessage()
         except Exception, e:
             logger.warning("Unexpected error by requestCloseConnection, ignoring", exc_info = true);
-=======
-            self.readMessage()
-        except:
-            print "Unexpected error by requestCloseConnection, ignoring:", sys.exc_info()[0]
->>>>>>> 632b5018ec558a1a01122726318073e05596e66b
 
     def requestReadInfo( self ):
         logger.info("# Request Read Info")
@@ -1032,39 +1017,24 @@ class Medtronic600SeriesDriver( object ):
                     self.sendMessage( bayerAckMessage.encode() )
                     BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             elif responseSegment.messageType == 0x030A:
-<<<<<<< HEAD
                 logger.debug("## getPumpHistory got END_HISTORY_TRANSMISSION")
-                #readingFinished = True
+                transmissionCompleted = True
             else:          
                 logger.warning("## getPumpHistory !!! UNKNOWN MESSAGE !!!")
                 logger.warning("## getPumpHistory response.payload: {0}".format(binascii.hexlify(response.payload)))
-        return allSegments
-=======
-                print "## getPumpHistory got END_HISTORY_TRANSMISSION"
-                transmissionCompleted = True
-            else:          
-                print "## getPumpHistory !!! UNKNOWN MESSAGE !!!"
-                print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
 
         if transmissionCompleted:
             return allSegments
         else:
+            logger.error("Transmission finished, but END_HISTORY_TRANSMISSION did not arrive")
             raise DataIncompleteError("Transmission finished, but END_HISTORY_TRANSMISSION did not arrive")
->>>>>>> 632b5018ec558a1a01122726318073e05596e66b
-        #return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
         
     def decodePumpSegment(self, encodedFragmentedSegment):
         decodedBlocks = []
         segmentPayload = encodedFragmentedSegment[0]
         
         for idx in range(1, len(encodedFragmentedSegment)):        
-<<<<<<< HEAD
             segmentPayload+= encodedFragmentedSegment[idx]        
-=======
-            segmentPayload+= encodedFragmentedSegment[idx]
-        #print "Merged string:\n", binascii.hexlify(segmentPayload)
-        
->>>>>>> 632b5018ec558a1a01122726318073e05596e66b
         
         # Decompress the message
         if struct.unpack( '>H', segmentPayload[0:2])[0] == 0x030E:
