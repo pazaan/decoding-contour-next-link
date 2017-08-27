@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 
-import hid # pip install hidapi - Platform independant
+# a nasty workaround on missing hidapi.dll on my windows (allows testing from saved files, but not download of pump)
+try:
+    import hid # pip install hidapi - Platform independant
+except WindowsError:
+    pass
 import astm # pip install astm
 from transitions import Machine # pip install transitions
 import struct
@@ -17,6 +21,7 @@ import lzo #pip install python-lzo
 from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
+from test.test_multiprocessing import exception_throwing_generator
 
 ascii= {
     'ACK' : 0x06,
@@ -49,6 +54,9 @@ class InvalidMessageError( Exception ):
     pass
 
 class ChecksumError( Exception ):
+    pass
+
+class DataIncompleteError( Exception ):
     pass
 
 class Config( object ):
@@ -957,6 +965,7 @@ class Medtronic600SeriesDriver( object ):
         self.sendMessage( bayerMessage.encode() )
         BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
         readingFinished = False
+        transmissionCompleted = False
         while readingFinished != True:
             response = None
             try:
@@ -1007,11 +1016,15 @@ class Medtronic600SeriesDriver( object ):
                     BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
             elif responseSegment.messageType == 0x030A:
                 print "## getPumpHistory got END_HISTORY_TRANSMISSION"
-                #readingFinished = True
+                transmissionCompleted = True
             else:          
                 print "## getPumpHistory !!! UNKNOWN MESSAGE !!!"
                 print "## getPumpHistory response.payload:", binascii.hexlify(response.payload)
-        return allSegments
+
+        if transmissionCompleted:
+            return allSegments
+        else:
+            raise DataIncompleteError("Transmission finished, but END_HISTORY_TRANSMISSION did not arrive")
         #return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
         
     def decodePumpSegment(self, encodedFragmentedSegment):
