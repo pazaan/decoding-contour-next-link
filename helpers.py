@@ -24,7 +24,7 @@ class DateTimeHelper( object ):
         # For example, if baseTime + rtc + offset was 1463137668, this would be
         # Fri, 13 May 2016 21:07:48 UTC.
         # However, the time the pump *means* is Fri, 13 May 2016 21:07:48 in our own timezone
-        offsetFromUTC = int(datetime.datetime.utcnow().strftime('%s')) - int(datetime.datetime.now().strftime('%s'))
+        offsetFromUTC = (datetime.datetime.utcnow() - datetime.datetime.now()).total_seconds()
         epochTime = DateTimeHelper.baseTime + rtc + offset + offsetFromUTC
         if epochTime < 0:
             epochTime = 0

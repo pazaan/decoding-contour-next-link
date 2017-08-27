@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-
 import requests # pip install requests
 import binascii
 import javaobj
@@ -13,8 +12,6 @@ import logging # To make javaobj's logger be quiet
 import sqlite3
 import re
 logging.disable( logging.CRITICAL )
-
-print __file__
 
 from read_minimed_next24 import Config, Medtronic600SeriesDriver
 
@@ -115,16 +112,16 @@ if __name__ == '__main__':
 
                 getHmacAndKey( config, serial, longSerial, session )
         else:
-            #try:
-            mt = Medtronic600SeriesDriver()
-            mt.initDevice()
-            mt.getDeviceInfo()
-
-            if mt.deviceSerial == None:
-                raise Exception()
-            #except Exception:
-            #    print "Please plug in your Contour NextLink 2.4, and rerun this script"
-            #    sys.exit( 1 )
+            try:
+                mt = Medtronic600SeriesDriver()
+                mt.initDevice()
+                mt.getDeviceInfo()
+    
+                if mt.deviceSerial == None:
+                    raise Exception()
+            except Exception:
+                print "Please plug in your Contour NextLink 2.4, and rerun this script"
+                sys.exit( 1 )
 
             longSerial = str( mt.deviceSerial )
             serial = re.sub( r"\d+-", "", longSerial )
