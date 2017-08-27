@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import logging
-from sys import exc_info
 #logging.basicConfig has to be before astm import, otherwise logs don't appear
 logging.basicConfig(level=logging.DEBUG)
 #just to avoid flooding events from transitions module
@@ -15,7 +14,6 @@ import astm # pip install astm
 from transitions import Machine # pip install transitions
 import struct
 import binascii
-import sys
 import datetime
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
@@ -798,7 +796,7 @@ class Medtronic600SeriesDriver( object ):
             self.sendMessage( struct.pack( '>B', ascii['EOT'] ) )
             self.checkControlMessage( ascii['ENQ'] )
         except Exception, e:
-            logger.warning("Unexpected error by exitControlMode, ignoring", exc_info = true);
+            logger.warning("Unexpected error by exitControlMode, ignoring", exc_info = True);
 
     def enterPassthroughMode( self ):
         logger.info("# enterPassthroughMode")
@@ -821,7 +819,7 @@ class Medtronic600SeriesDriver( object ):
             self.sendMessage( struct.pack( '>2s', '0|' ) )
             self.checkControlMessage( ascii['ACK'] )
         except Exception, e:
-            logger.warning("Unexpected error by exitPassthroughMode, ignoring", exc_info = true);
+            logger.warning("Unexpected error by exitPassthroughMode, ignoring", exc_info = True);
 
     def requestOpenConnection( self ):
         logger.info("# Request Open Connection")
@@ -839,7 +837,7 @@ class Medtronic600SeriesDriver( object ):
             self.sendMessage( bayerMessage.encode() )
             self.readMessage()
         except Exception, e:
-            logger.warning("Unexpected error by requestCloseConnection, ignoring", exc_info = true);
+            logger.warning("Unexpected error by requestCloseConnection, ignoring", exc_info = True);
 
     def requestReadInfo( self ):
         logger.info("# Request Read Info")
@@ -907,7 +905,7 @@ class Medtronic600SeriesDriver( object ):
                 # if does not come, ignore...
                 pass
         except Exception, e:
-            logger.warning("Unexpected error by finishEHSM, ignoring", exc_info = true);
+            logger.warning("Unexpected error by finishEHSM, ignoring", exc_info = True);
 
     def getPumpTime( self ):
         logger.info("# Get Pump Time")
@@ -1216,7 +1214,7 @@ def downloadPumpSession(downloadOperations):
                         try:
                             downloadOperations(mt)
                         except Exception, e:
-                            logger.error("Unexpected error in client downloadOperations", exc_info = true)
+                            logger.error("Unexpected error in client downloadOperations", exc_info = True)
                             raise
                     finally:
                         mt.finishEHSM()
