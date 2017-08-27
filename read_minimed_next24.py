@@ -21,7 +21,6 @@ import lzo #pip install python-lzo
 from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
-from test.test_multiprocessing import exception_throwing_generator
 
 ascii= {
     'ACK' : 0x06,
