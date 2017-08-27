@@ -21,6 +21,10 @@ from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
 
+import logging
+
+logger = logging.getLogger("read_minimed_next24")
+
 ascii= {
     'ACK' : 0x06,
     'CR' : 0x0D,
@@ -972,10 +976,10 @@ class Medtronic600SeriesDriver( object ):
                 pass
             elif responseSegment.messageType == 0xFF00:
                 print "## getPumpHistory got INITIATE_MULTIPACKET_TRANSFER"
-#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize:", responseSegment.segmentSize
-#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize:", responseSegment.packetSize
-#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.lastPacketSize:", responseSegment.lastPacketSize
-#                 print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetsToFetch:", responseSegment.packetsToFetch
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize:", responseSegment.segmentSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize:", responseSegment.packetSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.lastPacketSize:", responseSegment.lastPacketSize
+                print "## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetsToFetch:", responseSegment.packetsToFetch
                 segmentParams = responseSegment
                 packets = [None] * responseSegment.packetsToFetch
                 numPackets = 0
@@ -987,6 +991,12 @@ class Medtronic600SeriesDriver( object ):
 #                 print "## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION"
                 print "## getPumpHistory responseSegment.packetNumber:", responseSegment.packetNumber
                 #print "## getPumpHistory responseSegment.payload:", binascii.hexlify(responseSegment.payload)
+                if responseSegment.packetNumber != (segmentParams.packetsToFetch - 1) and len(responseSegment.payload) != segmentParams.packetSize:                
+                    print "## WARNING - packet length invalid, skipping. Expected {0}, got {1}, for packet {2}/{3}".format(segmentParams.packetSize, len(responseSegment.payload), responseSegment.packetNumber, responseSegment.segmentParams)
+                    continue
+                if responseSegment.packetNumber == segmentParams.packetsToFetch - 1 and len(responseSegment.payload) != segmentParams.lastPacketSize:                
+                    print "## WARNING - last packet length invalid, skipping. Expected {0}, got {1}, for packet {2}/{3}".format(segmentParams.lastPacketSize, len(responseSegment.payload), responseSegment.packetNumber, responseSegment.segmentParams)
+                    continue
                 if packets[responseSegment.packetNumber] == None:
                     numPackets = numPackets + 1
                     packets[responseSegment.packetNumber] = responseSegment.payload
@@ -1193,7 +1203,7 @@ def downloadPumpSession(downloadOperations):
                     try:
                         mt.negotiateChannel()
                     except:
-                        print "Cannot connect to the pump. Abandoning"
+                        logger.error("downloadPumpSession: Cannot connect to the pump. Abandoning")
                         return
                     mt.beginEHSM()
                     try:    
