@@ -6,17 +6,14 @@ from transitions import Machine # pip install transitions
 import struct
 import binascii
 import sys
-import time
 import datetime
-from dateutil import tz
 import crc16 # pip install crc16
 import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
 import hashlib
 import re
-import pickle
-import itertools as IT
-import lzo
+#import pickle # needed for local history export
+import lzo #pip install python-lzo
 from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
@@ -46,6 +43,12 @@ class UnexpectedStateException( Exception ):
     pass
 
 class NegotiationException( Exception ):
+    pass
+
+class InvalidMessageError( Exception ):
+    pass
+
+class ChecksumError( Exception ):
     pass
 
 class Config( object ):
@@ -327,7 +330,7 @@ class ReadLinkKeyResponseMessage( object ):
         key = ""
         pos = ord( serialNumber[-1:] ) & 7
 
-        for i in range(16):
+        for _ in range(16):
             if ( ord( self.packedLinkKey[pos + 1] ) & 1) == 1:
                 key += chr( ~ord( self.packedLinkKey[pos] ) & 0xff )
             else:
@@ -355,9 +358,9 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     @property
     def timeSet( self ):
         if struct.unpack( 'B', self.responsePayload[3:3] )[0] == 0:
-            return false
+            return False
         else:
-            return true
+            return True
 
     @property
     def encodedDatetime( self ):
@@ -519,9 +522,9 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     @property
     def recentBolusWizard( self ):
         if struct.unpack( 'B', self.responsePayload[72:72] )[0] == 0:
-            return false
+            return False
         else:
-            return true
+            return True
 
     @property
     def bolusWizardBGL( self ):
@@ -586,6 +589,7 @@ class DeviceCharacteristicsRequestMessage( MedtronicSendMessage ):
 
 class SuspendResumeRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
+        #TODO: Bug? Shall the payload be passed to the message, or not needed?
         payload = struct.pack( '>B', 0x01 )
         MedtronicSendMessage.__init__( self, 0x0107, session )
 
@@ -764,7 +768,7 @@ class Medtronic600SeriesDriver( object ):
             self.session.stickSerial = self.deviceSerial
             self.checkControlMessage( ascii['ENQ'] )
 
-        except TimeoutException as e:
+        except TimeoutException:
             self.sendMessage( struct.pack( '>B', ascii['EOT'] ) )
             self.checkControlMessage( ascii['ENQ'] )
             self.getDeviceInfo()
@@ -824,7 +828,7 @@ class Medtronic600SeriesDriver( object ):
         mtMessage = binascii.unhexlify( self.session.HMAC )
         bayerMessage = BayerBinaryMessage( 0x10, self.session, mtMessage )
         self.sendMessage( bayerMessage.encode() )
-        message = self.readMessage()
+        self.readMessage()
 
     def requestCloseConnection( self ):
         print "# Request Close Connection"
@@ -832,7 +836,7 @@ class Medtronic600SeriesDriver( object ):
             mtMessage = binascii.unhexlify( self.session.HMAC )
             bayerMessage = BayerBinaryMessage( 0x11, self.session, mtMessage )
             self.sendMessage( bayerMessage.encode() )
-            message = self.readMessage()
+            self.readMessage()
         except:
             print "Unexpected error by requestCloseConnection, ignoring:", sys.exc_info()[0]
 
@@ -1016,8 +1020,6 @@ class Medtronic600SeriesDriver( object ):
         
         for idx in range(1, len(encodedFragmentedSegment)):        
             segmentPayload+= encodedFragmentedSegment[idx]
-
-        joined = IT.chain(encodedFragmentedSegment[0:1])
         #print "Merged string:\n", binascii.hexlify(segmentPayload)
         
         
@@ -1206,7 +1208,7 @@ def downloadPumpSession(downloadOperations):
                             print "Unexpected error in client downloadOperations:", sys.exc_info()[0]
                             raise
                     finally:
-                         mt.finishEHSM()
+                        mt.finishEHSM()
                 finally:
                     mt.closeConnection()
             finally:
@@ -1217,19 +1219,19 @@ def downloadPumpSession(downloadOperations):
         mt.closeDevice()
 
 def pumpDownload(mt):
-    #     status = mt.getPumpStatus()
-    #     print binascii.hexlify( status.responsePayload )
-    #     print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
-    #     print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
-    #         status.sensorBGL / 18.016,
-    #         status.sensorBGLTimestamp.strftime( "%c" ) )
-    #     print "BGL trend: {0}".format( status.trendArrow )
-    #     print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
-    #     print "Temp basal rate: {0:.3f}U".format( status.tempBasalRate )
-    #     print "Temp basal percentage: {0}%".format( status.tempBasalPercentage )
-    #     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
-    #     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
-        
+    status = mt.getPumpStatus()
+    print binascii.hexlify( status.responsePayload )
+    print "Active Insulin: {0:.3f}U".format( status.activeInsulin )
+    print "Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
+             status.sensorBGL / 18.016,
+             status.sensorBGLTimestamp.strftime( "%c" ) )
+    print "BGL trend: {0}".format( status.trendArrow )
+    print "Current basal rate: {0:.3f}U".format( status.currentBasalRate )
+    print "Temp basal rate: {0:.3f}U".format( status.tempBasalRate )
+    print "Temp basal percentage: {0}%".format( status.tempBasalPercentage )
+    print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
+    print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
+    
     print "Getting history info"
     historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max)
     print binascii.hexlify( historyInfo.responsePayload,  )
@@ -1240,6 +1242,7 @@ def pumpDownload(mt):
     print "Getting history"
     history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2017, 8, 23), datetime.datetime.max)
 
+    # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
     #with open('hisory_data.dat', 'wb') as output:
     #    pickle.dump(history, output)
 
@@ -1250,16 +1253,9 @@ def pumpDownload(mt):
             print ev
     print "# End events"
     
-
-if __name__ == '__main__':
-    downloadPumpSession(pumpDownload)
-    
-        
-        
-        
     #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
 
-    # Commented code to try remote bolusing...
+# Commented code to try remote bolusing...
 #    print binascii.hexlify( mt.do405Message( pumpDatetime.encodedDatetime ).responsePayload )
 #    print binascii.hexlify( mt.do124Message( pumpDatetime.encodedDatetime ).responsePayload )
 #    print binascii.hexlify( mt.getBasicParameters().responsePayload )
@@ -1267,3 +1263,11 @@ if __name__ == '__main__':
 #    #print binascii.hexlify( mt.getBolusesStatus().responsePayload )
 #    print binascii.hexlify( mt.doRemoteBolus( 1, 0.1, 0 ).responsePayload )
 #    #print binascii.hexlify( mt.doRemoteBolus( 1, 0.1, 1 ).responsePayload )
+    
+
+if __name__ == '__main__':
+    downloadPumpSession(pumpDownload)
+    
+        
+        
+        
