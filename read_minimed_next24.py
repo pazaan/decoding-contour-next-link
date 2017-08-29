@@ -304,6 +304,8 @@ class MedtronicReceiveMessage( MedtronicMessage ):
             if( checksum != calcChecksum ):
                 raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
 
+        response.__class__ = MedtronicReceiveMessage
+
         return response
 
     @property
