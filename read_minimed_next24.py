@@ -306,6 +306,11 @@ class MedtronicReceiveMessage( MedtronicMessage ):
 
         return response
 
+    @property
+    def messageType( self ):
+        return struct.unpack( '>H', self.responsePayload[1:3] )[0]
+
+
 class ReadInfoResponseMessage( object ):
     @classmethod
     def decode( cls, message ):
@@ -353,9 +358,8 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        messageType = struct.unpack( '>H', response.responsePayload[1:3] )[0]
-        if messageType != 0x407:
-            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x407, messageType ) )
+        if response.messageType != 0x407:
+            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x407, response.messageType ) )
 
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpTimeResponseMessage
@@ -387,9 +391,8 @@ class PumpHistoryInfoResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        messageType = struct.unpack( '>H', response.responsePayload[1:3] )[0]
-        if messageType != 0x030D:
-            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x030D, messageType ) )
+        if response.messageType != 0x030D:
+            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x030D, response.messageType ) )
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpHistoryInfoResponseMessage
         return response
@@ -425,10 +428,6 @@ class MultiPacketSegment( MedtronicReceiveMessage ):
         return response
 
     @property
-    def messageType( self ):
-        return struct.unpack( '>H', self.responsePayload[1:3] )[0]
-
-    @property
     def packetNumber( self ):
         return struct.unpack( '>H', self.responsePayload[3:5] )[0]
     
@@ -459,9 +458,8 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        messageType = struct.unpack( '>H', response.responsePayload[1:3] )[0]
-        if messageType != 0x13c:
-            raise UnexpectedMessageException( "Expected to get a Status Response message '{0}'. Got {1}.".format( 0x13c, messageType ) )
+        if response.messageType != 0x13c:
+            raise UnexpectedMessageException( "Expected to get a Status Response message '{0}'. Got {1}.".format( 0x13c, response.messageType ) )
 
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpStatusResponseMessage
@@ -659,11 +657,19 @@ class BayerBinaryMessage( object ):
     @property
     def linkDeviceOperation( self ):
         return struct.unpack( '>B', self.envelope[18] )[0]
-    
-    def checkLinkDeviceOperation( self, expectedValue ):
+
+    # HACK: This is just a debug try, session param shall not be there    
+    def checkLinkDeviceOperation( self, expectedValue, session = None ):
         if self.linkDeviceOperation != expectedValue:
             logger.debug("### checkLinkDeviceOperation BayerBinaryMessage.envelope: {0}".format(binascii.hexlify(self.envelope)))
             logger.debug("### checkLinkDeviceOperation BayerBinaryMessage.payload: {0}".format(binascii.hexlify(self.payload)))
+            # HACK: This is just a debug try
+            if self.linkDeviceOperation == 0x80 and session != None:
+                try:
+                    response = MedtronicReceiveMessage.decode( self.payload, session )
+                    logger.warning("#### Message type of caught 0x80: 0x{0:1}".format(response.messageType))
+                except:
+                    pass                
             raise UnexpectedMessageException( "Expected to get linkDeviceOperation {0:x}. Got {1:x}".format( expectedValue, self.linkDeviceOperation ) )
 
 class Medtronic600SeriesDriver( object ):
@@ -867,7 +873,7 @@ class Medtronic600SeriesDriver( object ):
 
             bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
             self.sendMessage( bayerMessage.encode() )
-            BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+            BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
             response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
             if len( response.payload ) > 13:
                 # Check that the channel ID matches
@@ -890,7 +896,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # The Begin EHSM only has an 0x81 response.
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # The Begin EHSM only has an 0x81 response.
 
     def sendFinishEHSM( self ):
         logger.info("# Finish Extended High Speed Mode Session")
@@ -900,7 +906,7 @@ class Medtronic600SeriesDriver( object ):
             bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
             self.sendMessage( bayerMessage.encode() )
             try:
-                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # The Finish EHSM only has an 0x81 response.
+                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # The Finish EHSM only has an 0x81 response.
             except:
                 # if does not come, ignore...
                 pass
@@ -916,7 +922,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         result = PumpTimeResponseMessage.decode( response.payload, self.session )
         self.offset = result.offset;
@@ -931,7 +937,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return PumpStatusResponseMessage.decode( response.payload, self.session )
 
@@ -944,7 +950,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
 
@@ -958,7 +964,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         readingFinished = False
         transmissionCompleted = False
         while readingFinished != True:
@@ -990,7 +996,7 @@ class Medtronic600SeriesDriver( object ):
                 ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__INITIATE_TRANSFER)
                 bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                 self.sendMessage( bayerAckMessage.encode() )
-                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
             elif responseSegment.messageType == 0xFF01:
                 logger.debug("## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION")
                 logger.debug("## getPumpHistory responseSegment.packetNumber: {0}".format(responseSegment.packetNumber))
@@ -1018,7 +1024,7 @@ class Medtronic600SeriesDriver( object ):
                     ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__SEND_NEXT_SEGMENT)
                     bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                     self.sendMessage( bayerAckMessage.encode() )
-                    BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+                    BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
             elif responseSegment.messageType == 0x030A:
                 logger.debug("## getPumpHistory got END_HISTORY_TRANSMISSION")
                 transmissionCompleted = True
@@ -1115,7 +1121,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1127,7 +1133,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1139,7 +1145,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1151,7 +1157,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1163,7 +1169,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1175,7 +1181,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81) # Read the 0x81
+        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
