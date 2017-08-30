@@ -666,12 +666,9 @@ class BayerBinaryMessage( object ):
             logger.debug("### checkLinkDeviceOperation BayerBinaryMessage.envelope: {0}".format(binascii.hexlify(self.envelope)))
             logger.debug("### checkLinkDeviceOperation BayerBinaryMessage.payload: {0}".format(binascii.hexlify(self.payload)))
             # HACK: This is just a debug try
-            if self.linkDeviceOperation == 0x80 and session != None:
-                try:
-                    response = MedtronicReceiveMessage.decode( self.payload, session )
-                    logger.warning("#### Message type of caught 0x80: 0x{0:1}".format(response.messageType))
-                except:
-                    pass                
+            if self.linkDeviceOperation == 0x80:
+                response = MedtronicReceiveMessage.decode( self.payload, session )
+                logger.warning("#### Message type of caught 0x80: 0x{0:1}".format(response.messageType))
             raise UnexpectedMessageException( "Expected to get linkDeviceOperation {0:x}. Got {1:x}".format( expectedValue, self.linkDeviceOperation ) )
 
 class Medtronic600SeriesDriver( object ):
