@@ -2,7 +2,7 @@
 
 import logging
 #logging.basicConfig has to be before astm import, otherwise logs don't appear
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s] %(message)s', level=logging.DEBUG)
 #just to avoid flooding events from transitions module
 logging.getLogger('transitions').setLevel(logging.WARNING)
 # a nasty workaround on missing hidapi.dll on my windows (allows testing from saved files, but not download of pump)
