@@ -40,6 +40,10 @@ ascii= {
     'STX' : 0x02
 }
 
+MESSAGE_TYPE = {
+    'REQUEST_PUMP_TIME' : 0x407
+}
+
 class TimeoutException( Exception ):
     pass
 
@@ -306,7 +310,10 @@ class MedtronicReceiveMessage( MedtronicMessage ):
                 raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
 
         response.__class__ = MedtronicReceiveMessage
-
+        
+        if response.messageType == MESSAGE_TYPE.REQUEST_PUMP_TIME:
+            response.__class__ = PumpTimeResponseMessage
+        
         return response
 
     @property
@@ -949,8 +956,8 @@ class Medtronic600SeriesDriver( object ):
         #BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         self.getBayerBinaryMessage(0x81)
         #response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        response = self.getMedtronicMessage([0x407])
-        result = PumpTimeResponseMessage.decode( response.originalMessage, self.session )
+        result = self.getMedtronicMessage([0x407])
+        #result = PumpTimeResponseMessage.decode( response.originalMessage, self.session )
         self.offset = result.offset;
         return result
 
