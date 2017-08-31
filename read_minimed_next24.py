@@ -40,9 +40,8 @@ ascii= {
     'STX' : 0x02
 }
 
-MESSAGE_TYPE = {
-    'REQUEST_PUMP_TIME' : 0x407
-}
+class MESSAGE_TYPE:
+    REQUEST_PUMP_TIME = 0x407
 
 class TimeoutException( Exception ):
     pass
