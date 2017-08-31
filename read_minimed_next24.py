@@ -668,7 +668,7 @@ class BayerBinaryMessage( object ):
             # HACK: This is just a debug try
             if self.linkDeviceOperation == 0x80:
                 response = MedtronicReceiveMessage.decode( self.payload, session )
-                logger.warning("#### Message type of caught 0x80: 0x{0:1}".format(response.messageType))
+                logger.warning("#### Message type of caught 0x80: 0x{0:x}".format(response.messageType))
             raise UnexpectedMessageException( "Expected to get linkDeviceOperation {0:x}. Got {1:x}".format( expectedValue, self.linkDeviceOperation ) )
 
 class Medtronic600SeriesDriver( object ):
@@ -912,6 +912,29 @@ class Medtronic600SeriesDriver( object ):
         except Exception:
             logger.warning("Unexpected error by finishEHSM, ignoring", exc_info = True);
 
+    def getBayerBinaryMessage(self, expectedLinkDeviceOperation):
+        messageReceived = False
+        message = None
+        while messageReceived == False:
+            message = BayerBinaryMessage.decode(self.readMessage())
+            if message.linkDeviceOperation == expectedLinkDeviceOperation:
+                messageReceived = True
+            else:
+                logger.warning("## getBayerBinaryMessage: waiting for message 0x{0:x}, got 0x{1:x}".format(expectedLinkDeviceOperation, message.linkDeviceOperation))
+        return message
+
+    def getMedtronicMessage(self, expectedEventTypes):
+        messageReceived = False
+        medMessage = None
+        while messageReceived == False:
+            message = self.getBayerBinaryMessage(0x80)
+            medMessage = MedtronicReceiveMessage.decode(message.payload, self.session)
+            if medMessage.eventType in expectedEventTypes:
+                messageReceived = True
+            else:
+                logger.warning("## getMedtronicMessage: waiting for message 0x{0:x}, got 0x{1:x}".format(expectedEventTypes, medMessage.eventType))
+        return medMessage
+
     def getPumpTime( self ):
         logger.info("# Get Pump Time")
         if self.state != 'EHSM session':
@@ -921,8 +944,11 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
-        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        #experimental
+        #BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81)
+        #response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
+        response = self.getMedtronicMessage([0x407])
         result = PumpTimeResponseMessage.decode( response.payload, self.session )
         self.offset = result.offset;
         return result
