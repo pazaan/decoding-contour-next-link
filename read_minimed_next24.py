@@ -237,6 +237,7 @@ class MedtronicMessage( object ):
         response.session = session
         response.envelope = str( message[0:2] )
         response.payload = str( message[2:-2] )
+        response.originalMessage = message;
 
         checksum = struct.unpack( '<H', str( message[-2:] ) )[0]
         calcChecksum = MedtronicMessage.calculateCcitt( response.envelope + response.payload )
@@ -949,7 +950,7 @@ class Medtronic600SeriesDriver( object ):
         self.getBayerBinaryMessage(0x81)
         #response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         response = self.getMedtronicMessage([0x407])
-        result = PumpTimeResponseMessage.decode( response.payload, self.session )
+        result = PumpTimeResponseMessage.decode( response.originalMessage, self.session )
         self.offset = result.offset;
         return result
 
