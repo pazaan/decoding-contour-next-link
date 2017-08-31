@@ -923,16 +923,16 @@ class Medtronic600SeriesDriver( object ):
                 logger.warning("## getBayerBinaryMessage: waiting for message 0x{0:x}, got 0x{1:x}".format(expectedLinkDeviceOperation, message.linkDeviceOperation))
         return message
 
-    def getMedtronicMessage(self, expectedEventTypes):
+    def getMedtronicMessage(self, expectedMessageTypes):
         messageReceived = False
         medMessage = None
         while messageReceived == False:
             message = self.getBayerBinaryMessage(0x80)
             medMessage = MedtronicReceiveMessage.decode(message.payload, self.session)
-            if medMessage.eventType in expectedEventTypes:
+            if medMessage.messageType in expectedMessageTypes:
                 messageReceived = True
             else:
-                logger.warning("## getMedtronicMessage: waiting for message 0x{0:x}, got 0x{1:x}".format(expectedEventTypes, medMessage.eventType))
+                logger.warning("## getMedtronicMessage: waiting for message 0x{0:x}, got 0x{1:x}".format(expectedMessageTypes, medMessage.messageType))
         return medMessage
 
     def getPumpTime( self ):
