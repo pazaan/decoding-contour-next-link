@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+from pygments.unistring import Co
 #logging.basicConfig has to be before astm import, otherwise logs don't appear
 logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s] %(message)s', level=logging.DEBUG)
 #just to avoid flooding events from transitions module
@@ -40,8 +41,42 @@ ascii= {
     'STX' : 0x02
 }
 
-class MESSAGE_TYPE:
-    REQUEST_PUMP_TIME = 0x407
+class COM_D_COMMAND:
+    HIGH_SPEED_MODE_COMMAND = 0x0412
+    TIME_REQUEST = 0x0403
+    TIME_RESPONSE = 0x0407
+    READ_PUMP_STATUS_REQUEST = 0x0112
+    READ_PUMP_STATUS_RESPONSE = 0x013C
+    READ_BASAL_PATTERN_REQUEST = 0x0116
+    READ_BASAL_PATTERN_RESPONSE = 0x0123
+    READ_BOLUS_WIZARD_CARB_RATIOS_REQUEST = 0x012B
+    READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE = 0x012C
+    READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_REQUEST = 0x012E
+    READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_RESPONSE = 0x012F
+    READ_BOLUS_WIZARD_BG_TARGETS_REQUEST = 0x0131
+    READ_BOLUS_WIZARD_BG_TARGETS_RESPONSE = 0x0132
+    DEVICE_STRING_REQUEST = 0x013A
+    DEVICE_STRING_RESPONSE = 0x013B
+    DEVICE_CHARACTERISTICS_REQUEST = 0x0200
+    DEVICE_CHARACTERISTICS_RESPONSE = 0x0201
+    READ_HISTORY_REQUEST = 0x0304
+    READ_HISTORY_RESPONSE = 0x0305
+    END_HISTORY_TRANSMISSION = 0x030A
+    READ_HISTORY_INFO_REQUEST = 0x030C
+    READ_HISTORY_INFO_RESPONSE = 0x030D
+    UNMERGED_HISTORY_RESPONSE = 0x030E
+    INITIATE_MULTIPACKET_TRANSFER = 0xFF00
+    MULTIPACKET_SEGMENT_TRANSMISSION = 0xFF01
+    MULTIPACKET_RESEND_PACKETS = 0xFF02
+    ACK_MULTIPACKET_COMMAND = 0x00FE # TODO ACK_COMMAND
+    NAK_COMMAND = 0x00FF
+    BOLUSES_REQUEST = 0x0114
+    REMOTE_BOLUS_REQUEST = 0x0100
+    REQUEST_0x0124 = 0x0124
+    REQUEST_0x0405 = 0x0405
+    TEMP_BASAL_REQUEST = 0x0115
+    SUSPEND_RESUME_REQUEST = 0x0107
+    NGP_PARAMETER_REQUEST = 0x0138
 
 class TimeoutException( Exception ):
     pass
@@ -267,7 +302,7 @@ class MedtronicSendMessage( MedtronicMessage ):
         MedtronicMessage.__init__( self, 0x05, session )
 
         # FIXME - make this not be hard coded
-        if messageType == 0x0412:
+        if messageType == COM_D_COMMAND.HIGH_SPEED_MODE_COMMAND:
             seqNo = self.session.sendSequenceNumber | 0x80
         else:
             seqNo = self.session.sendSequenceNumber
@@ -310,8 +345,12 @@ class MedtronicReceiveMessage( MedtronicMessage ):
 
         response.__class__ = MedtronicReceiveMessage
         
-        if response.messageType == MESSAGE_TYPE.REQUEST_PUMP_TIME:
+        if response.messageType == COM_D_COMMAND.TIME_RESPONSE:
             response.__class__ = PumpTimeResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_HISTORY_INFO_RESPONSE:
+            response.__class__ = PumpHistoryInfoResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE:
+            response.__class__ = PumpStatusResponseMessage
         
         return response
 
@@ -367,8 +406,8 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        if response.messageType != 0x407:
-            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x407, response.messageType ) )
+        if response.messageType != COM_D_COMMAND.TIME_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( COM_D_COMMAND.TIME_RESPONSE, response.messageType ) )
 
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpTimeResponseMessage
@@ -400,8 +439,8 @@ class PumpHistoryInfoResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        if response.messageType != 0x030D:
-            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( 0x030D, response.messageType ) )
+        if response.messageType != COM_D_COMMAND.READ_HISTORY_INFO_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Time Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_HISTORY_INFO_RESPONSE, response.messageType ) )
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpHistoryInfoResponseMessage
         return response
@@ -467,8 +506,8 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
-        if response.messageType != 0x13c:
-            raise UnexpectedMessageException( "Expected to get a Status Response message '{0}'. Got {1}.".format( 0x13c, response.messageType ) )
+        if response.messageType != COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Status Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE, response.messageType ) )
 
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpStatusResponseMessage
@@ -545,20 +584,20 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         payload = struct.pack( '>B', 0x00 )
-        MedtronicSendMessage.__init__( self, 0x0412, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.HIGH_SPEED_MODE_COMMAND, session, payload )
 
 class FinishEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         payload = struct.pack( '>B', 0x01 )
-        MedtronicSendMessage.__init__( self, 0x0412, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.HIGH_SPEED_MODE_COMMAND, session, payload )
 
 class PumpTimeRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0403, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.TIME_REQUEST, session )
 
 class PumpStatusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0112, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_PUMP_STATUS_REQUEST, session )
 
 class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
     def __init__( self, session, dateStart, dateEnd, dateOffset):
@@ -566,7 +605,7 @@ class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
         fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
         toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
         payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
-        MedtronicSendMessage.__init__( self, 0x030C, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_HISTORY_INFO_REQUEST, session, payload )
 
 class PumpHistoryRequestMessage( MedtronicSendMessage ):
     def __init__( self, session, dateStart, dateEnd, dateOffset ):
@@ -574,37 +613,37 @@ class PumpHistoryRequestMessage( MedtronicSendMessage ):
         fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
         toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
         payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
-        MedtronicSendMessage.__init__( self, 0x0304, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_HISTORY_REQUEST, session, payload )
 
 class AckMultipacketRequestMessage( MedtronicSendMessage ):
-    SEGMENT_COMMAND__INITIATE_TRANSFER = 0xFF00
-    SEGMENT_COMMAND__SEND_NEXT_SEGMENT = 0xFF01
+    SEGMENT_COMMAND__INITIATE_TRANSFER = COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER
+    SEGMENT_COMMAND__SEND_NEXT_SEGMENT = COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION
     
     def __init__( self, session, segmentCommand ):
         payload = struct.pack( '>H', segmentCommand )
-        MedtronicSendMessage.__init__( self, 0x00FE, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.ACK_MULTIPACKET_COMMAND, session, payload )
     
 class BasicNgpParametersRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0138, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.NGP_PARAMETER_REQUEST, session )
 
 class DeviceCharacteristicsRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0200, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.DEVICE_CHARACTERISTICS_REQUEST, session )
 
 class SuspendResumeRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         #TODO: Bug? Shall the payload be passed to the message, or not needed?
         payload = struct.pack( '>B', 0x01 )
-        MedtronicSendMessage.__init__( self, 0x0107, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.SUSPEND_RESUME_REQUEST, session )
 
 class PumpTempBasalRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0115, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.TEMP_BASAL_REQUEST, session )
 
 class PumpBolusesRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
-        MedtronicSendMessage.__init__( self, 0x0114, session )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.BOLUSES_REQUEST, session )
 
 class PumpRemoteBolusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session, bolusID, amount, execute ):
@@ -612,17 +651,17 @@ class PumpRemoteBolusRequestMessage( MedtronicSendMessage ):
         unknown2 = 0 # Square Wave amount?
         unknown3 = 0 # Square Wave length?
         payload = struct.pack( '>BBHHBH', bolusID, execute, unknown1, amount * 10000, unknown2, unknown3 )
-        MedtronicSendMessage.__init__( self, 0x0100, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.REMOTE_BOLUS_REQUEST, session, payload )
 
 class Type405RequestMessage( MedtronicSendMessage ):
     def __init__( self, session, pumpDateTime ):
         payload = struct.pack( '>BQ', 0x01, pumpDateTime )
-        MedtronicSendMessage.__init__( self, 0x0405, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.REQUEST_0x0405, session, payload )
 
 class Type124RequestMessage( MedtronicSendMessage ):
     def __init__( self, session, pumpDateTime ):
         payload = struct.pack( '>QBB', pumpDateTime, 0x00, 0xFF )
-        MedtronicSendMessage.__init__( self, 0x0124, session, payload )
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.REQUEST_0x0124, session, payload )
 
 class BayerBinaryMessage( object ):
     def __init__( self, messageType=None, session=None, payload=None ):
@@ -879,7 +918,7 @@ class Medtronic600SeriesDriver( object ):
 
             bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
             self.sendMessage( bayerMessage.encode() )
-            BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+            self.getBayerBinaryMessage(0x81) # Read the 0x81
             response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
             if len( response.payload ) > 13:
                 # Check that the channel ID matches
@@ -902,7 +941,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # The Begin EHSM only has an 0x81 response.
+        self.getBayerBinaryMessage(0x81) # The Begin EHSM only has an 0x81 response.
 
     def sendFinishEHSM( self ):
         logger.info("# Finish Extended High Speed Mode Session")
@@ -912,7 +951,7 @@ class Medtronic600SeriesDriver( object ):
             bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
             self.sendMessage( bayerMessage.encode() )
             try:
-                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # The Finish EHSM only has an 0x81 response.
+                self.getBayerBinaryMessage(0x81) # The Finish EHSM only has an 0x81 response.
             except:
                 # if does not come, ignore...
                 pass
@@ -951,12 +990,8 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        #experimental
-        #BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
         self.getBayerBinaryMessage(0x81)
-        #response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        result = self.getMedtronicMessage([0x407])
-        #result = PumpTimeResponseMessage.decode( response.originalMessage, self.session )
+        result = self.getMedtronicMessage([COM_D_COMMAND.TIME_RESPONSE])
         self.offset = result.offset;
         return result
 
@@ -969,9 +1004,9 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
-        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        return PumpStatusResponseMessage.decode( response.payload, self.session )
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE])
+        return response
 
     def getPumpHistoryInfo( self, dateStart, dateEnd ):
         logger.info("# Get Pump History Info")
@@ -982,9 +1017,9 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
-        response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-        return PumpHistoryInfoResponseMessage.decode( response.payload, self.session )
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_HISTORY_INFO_RESPONSE])
+        return response
 
     def getPumpHistory( self, expectedSize, dateStart, dateEnd ):
         logger.info("# Get Pump History")
@@ -996,7 +1031,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         readingFinished = False
         transmissionCompleted = False
         while readingFinished != True:
@@ -1013,10 +1048,10 @@ class Medtronic600SeriesDriver( object ):
             #logger.debug("## getPumpHistory response.payload: {0}".format(binascii.hexlify(response.payload)))
             #logger.debug("## getPumpHistory responseSegment.messageType: {0:x}".format(responseSegment.messageType))
             
-            if responseSegment.messageType == 0x0412:
+            if responseSegment.messageType == COM_D_COMMAND.HIGH_SPEED_MODE_COMMAND:
                 logger.debug("## getPumpHistory consumed HIGH_SPEED_MODE_COMMAND")
                 pass
-            elif responseSegment.messageType == 0xFF00:
+            elif responseSegment.messageType == COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER:
                 logger.debug("## getPumpHistory got INITIATE_MULTIPACKET_TRANSFER")
                 logger.debug("## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.segmentSize: {0}".format(responseSegment.segmentSize))
                 logger.debug("## getPumpHistory INITIATE_MULTIPACKET_TRANSFER.packetSize: {0}".format(responseSegment.packetSize))
@@ -1028,8 +1063,8 @@ class Medtronic600SeriesDriver( object ):
                 ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__INITIATE_TRANSFER)
                 bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                 self.sendMessage( bayerAckMessage.encode() )
-                BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
-            elif responseSegment.messageType == 0xFF01:
+                self.getBayerBinaryMessage(0x81) # Read the 0x81
+            elif responseSegment.messageType == COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION:
                 logger.debug("## getPumpHistory got MULTIPACKET_SEGMENT_TRANSMISSION")
                 logger.debug("## getPumpHistory responseSegment.packetNumber: {0}".format(responseSegment.packetNumber))
                 if responseSegment.packetNumber != (segmentParams.packetsToFetch - 1) and len(responseSegment.payload) != segmentParams.packetSize:                
@@ -1056,8 +1091,8 @@ class Medtronic600SeriesDriver( object ):
                     ackMessage = AckMultipacketRequestMessage(self.session, AckMultipacketRequestMessage.SEGMENT_COMMAND__SEND_NEXT_SEGMENT)
                     bayerAckMessage = BayerBinaryMessage( 0x12, self.session, ackMessage.encode() )
                     self.sendMessage( bayerAckMessage.encode() )
-                    BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
-            elif responseSegment.messageType == 0x030A:
+                    self.getBayerBinaryMessage(0x81) # Read the 0x81
+            elif responseSegment.messageType == COM_D_COMMAND.END_HISTORY_TRANSMISSION:
                 logger.debug("## getPumpHistory got END_HISTORY_TRANSMISSION")
                 transmissionCompleted = True
             else:          
@@ -1153,7 +1188,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1165,7 +1200,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1177,7 +1212,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1189,7 +1224,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1201,7 +1236,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
@@ -1213,7 +1248,7 @@ class Medtronic600SeriesDriver( object ):
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
-        BayerBinaryMessage.decode(self.readMessage()).checkLinkDeviceOperation(0x81, self.session) # Read the 0x81
+        self.getBayerBinaryMessage(0x81) # Read the 0x81
         response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
         return MedtronicReceiveMessage.decode( response.payload, self.session )
 
