@@ -983,7 +983,7 @@ class Medtronic600SeriesDriver( object ):
             if medMessage.messageType in expectedMessageTypes:
                 messageReceived = True
             else:
-                logger.warning("## getMedtronicMessage: waiting for message [{0:x}], got 0x{1:x}".format(''.join('%04x '%i for i in expectedMessageTypes) , medMessage.messageType))
+                logger.warning("## getMedtronicMessage: waiting for message of [{0}], got 0x{1:x}".format(''.join('%04x '%i for i in expectedMessageTypes) , medMessage.messageType))
         return medMessage
 
     def getPumpTime( self ):
