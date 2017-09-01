@@ -350,6 +350,12 @@ class MedtronicReceiveMessage( MedtronicMessage ):
             response.__class__ = PumpHistoryInfoResponseMessage
         elif response.messageType == COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE:
             response.__class__ = PumpStatusResponseMessage
+        elif response.messageType == COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER:
+            response.__class__ = MultiPacketSegment
+        elif response.messageType == COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION:
+            response.__class__ = MultiPacketSegment
+        elif response.messageType == COM_D_COMMAND.END_HISTORY_TRANSMISSION:
+            response.__class__ = MultiPacketSegment
         
         return response
 
@@ -1031,17 +1037,10 @@ class Medtronic600SeriesDriver( object ):
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
         self.getBayerBinaryMessage(0x81) # Read the 0x81
-        readingFinished = False
+
         transmissionCompleted = False
-        while readingFinished != True:
-            response = None
-            try:
-                response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
-            except TimeoutException:
-                # a bit hacky, but seems that countour link sometimes sends some unexpected packages after END_HISTORY_TRANSMISSION
-                # and these have to be consumed, otherwise we cannot make clean exit or continue the transmission
-                readingFinished = True
-                continue
+        while transmissionCompleted != True:
+            response = self.getMedtronicMessage([COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER, COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION, COM_D_COMMAND.END_HISTORY_TRANSMISSION])
                 
             responseSegment = MultiPacketSegment.decode(response.payload, self.session)
             #logger.debug("## getPumpHistory response.payload: {0}".format(binascii.hexlify(response.payload)))
