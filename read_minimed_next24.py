@@ -1040,12 +1040,8 @@ class Medtronic600SeriesDriver( object ):
 
         transmissionCompleted = False
         while transmissionCompleted != True:
-            response = self.getMedtronicMessage([COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER, COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION, COM_D_COMMAND.END_HISTORY_TRANSMISSION])
-                
-            responseSegment = MultiPacketSegment.decode(response.payload, self.session)
-            #logger.debug("## getPumpHistory response.payload: {0}".format(binascii.hexlify(response.payload)))
-            #logger.debug("## getPumpHistory responseSegment.messageType: {0:x}".format(responseSegment.messageType))
-            
+            responseSegment = self.getMedtronicMessage([COM_D_COMMAND.INITIATE_MULTIPACKET_TRANSFER, COM_D_COMMAND.MULTIPACKET_SEGMENT_TRANSMISSION, COM_D_COMMAND.END_HISTORY_TRANSMISSION])
+                            
             if responseSegment.messageType == COM_D_COMMAND.HIGH_SPEED_MODE_COMMAND:
                 logger.debug("## getPumpHistory consumed HIGH_SPEED_MODE_COMMAND")
                 pass
