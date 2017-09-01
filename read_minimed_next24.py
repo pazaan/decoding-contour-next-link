@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import logging
-from pygments.unistring import Co
 #logging.basicConfig has to be before astm import, otherwise logs don't appear
 logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s] %(message)s', level=logging.DEBUG)
 #just to avoid flooding events from transitions module
