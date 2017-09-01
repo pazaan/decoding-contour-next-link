@@ -1091,7 +1091,7 @@ class Medtronic600SeriesDriver( object ):
                 transmissionCompleted = True
             else:          
                 logger.warning("## getPumpHistory !!! UNKNOWN MESSAGE !!!")
-                logger.warning("## getPumpHistory response.payload: {0}".format(binascii.hexlify(response.payload)))
+                logger.warning("## getPumpHistory response.messageType: {0:x}".format(responseSegment.messageType))
 
         if transmissionCompleted:
             return allSegments
