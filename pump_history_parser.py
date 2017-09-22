@@ -143,6 +143,8 @@ class NGPHistoryEvent:
     def eventInstance(self):
         if self.eventType == NGPHistoryEvent.EVENT_TYPE.BG_READING:
             return BloodGlucoseReadingEvent(self.eventData)
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:            
+            return NormalBolusDeliveredEvent(self.eventData);
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -182,8 +184,6 @@ class NGPHistoryEvent:
 #         return new RewindEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.CANNULA_FILL_DELIVERED:
 #         return new CannulaFillDeliveredEvent(this.eventData);
-#       case NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:
-#         return new NormalBolusDeliveredEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.SQUARE_BOLUS_DELIVERED:
 #         return new SquareBolusDeliveredEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.DUAL_BOLUS_PART_DELIVERED:
@@ -243,4 +243,46 @@ class BloodGlucoseReadingEvent(NGPHistoryEvent):
 #   get isCalibration() {
 #     return (this.bgSource === NGPUtil.NGPConstants.BG_SOURCE.SENSOR_CAL || this.calibrationFlag);
 #   }
+
+class BolusDeliveredEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Source:{1}, Number:{2}, presetBolusNumber:{3}'.format(NGPHistoryEvent.__str__(self), self.bolusSource, self.bolusNumber, self.presetBolusNumber)
+
+    @property
+    def bolusSource(self):
+        return struct.unpack( '>B', self.eventData[0x0B:0x0C] )[0]#return this.eventData[0x0B];
+
+    @property
+    def bolusNumber(self):
+        return struct.unpack( '>B', self.eventData[0x0C:0x0D] )[0]#return this.eventData[0x0C];
+
+    @property
+    def presetBolusNumber(self):
+        # See NGPUtil.NGPConstants.BOLUS_PRESET_NAME
+        return struct.unpack( '>B', self.eventData[0x0D:0x0E] )[0]#return this.eventData[0x0D];
+    
+
+
+class NormalBolusDeliveredEvent(BolusDeliveredEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Del:{1}, Prog:{2}, Active:{3}'.format(NGPHistoryEvent.__str__(self), self.deliveredAmount, self.programmedAmount, self.activeInsulin)
+
+    @property
+    def deliveredAmount(self):
+        return struct.unpack( '>I', self.eventData[0x12:0x16] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
+
+    @property
+    def programmedAmount(self):
+        return struct.unpack( '>I', self.eventData[0x0E:0x12] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
+
+    @property
+    def activeInsulin(self):
+        return struct.unpack( '>I', self.eventData[0x16:0x1A] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
+
         
