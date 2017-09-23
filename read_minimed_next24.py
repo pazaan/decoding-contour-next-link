@@ -77,6 +77,10 @@ class COM_D_COMMAND:
     SUSPEND_RESUME_REQUEST = 0x0107
     NGP_PARAMETER_REQUEST = 0x0138
 
+class HISTORY_DATA_TYPE:
+    PUMP_DATA = 0x02
+    SENSOR_DATA = 0x03
+
 class TimeoutException( Exception ):
     pass
 
@@ -605,16 +609,16 @@ class PumpStatusRequestMessage( MedtronicSendMessage ):
         MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_PUMP_STATUS_REQUEST, session )
 
 class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
-    def __init__( self, session, dateStart, dateEnd, dateOffset):
-        histDataType_PumpData = 0x02 #PUMP_DATA
+    def __init__( self, session, dateStart, dateEnd, dateOffset, requestType = HISTORY_DATA_TYPE.PUMP_DATA):
+        histDataType_PumpData = requestType
         fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
         toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
         payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
         MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_HISTORY_INFO_REQUEST, session, payload )
 
 class PumpHistoryRequestMessage( MedtronicSendMessage ):
-    def __init__( self, session, dateStart, dateEnd, dateOffset ):
-        histDataType_PumpData = 0x02 #PUMP_DATA
+    def __init__( self, session, dateStart, dateEnd, dateOffset, requestType = HISTORY_DATA_TYPE.PUMP_DATA ):
+        histDataType_PumpData = requestType
         fromRtc = DateTimeHelper.rtcFromDate(dateStart, dateOffset)
         toRtc = DateTimeHelper.rtcFromDate(dateEnd, dateOffset)
         payload = struct.pack( '>BBIIH', histDataType_PumpData, 0x04, fromRtc, toRtc, 0x00 )
@@ -1013,12 +1017,12 @@ class Medtronic600SeriesDriver( object ):
         response = self.getMedtronicMessage([COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE])
         return response
 
-    def getPumpHistoryInfo( self, dateStart, dateEnd ):
+    def getPumpHistoryInfo( self, dateStart, dateEnd, requestType = HISTORY_DATA_TYPE.PUMP_DATA ):
         logger.info("# Get Pump History Info")
         if self.state != 'EHSM session':
             logger.error('Link needs to be in EHSM to request device history info')
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device history info' )
-        mtMessage = PumpHistoryInfoRequestMessage( self.session, dateStart, dateEnd, self.offset )
+        mtMessage = PumpHistoryInfoRequestMessage( self.session, dateStart, dateEnd, self.offset, requestType )
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
@@ -1026,13 +1030,13 @@ class Medtronic600SeriesDriver( object ):
         response = self.getMedtronicMessage([COM_D_COMMAND.READ_HISTORY_INFO_RESPONSE])
         return response
 
-    def getPumpHistory( self, expectedSize, dateStart, dateEnd ):
+    def getPumpHistory( self, expectedSize, dateStart, dateEnd, requestType = HISTORY_DATA_TYPE.PUMP_DATA ):
         logger.info("# Get Pump History")
         allSegments = []
         if self.state != 'EHSM session':
             logger.error('Link needs to be in EHSM to request device history')
             raise UnexpectedStateException( 'Link needs to be in EHSM to request device history' )
-        mtMessage = PumpHistoryRequestMessage( self.session, dateStart, dateEnd, self.offset  )
+        mtMessage = PumpHistoryRequestMessage( self.session, dateStart, dateEnd, self.offset, requestType )
 
         bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
         self.sendMessage( bayerMessage.encode() )
@@ -1314,14 +1318,14 @@ def pumpDownload(mt):
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
     
     print "Getting history info"
-    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max)
+    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
     #print binascii.hexlify( historyInfo.responsePayload,  )
     print " Start: {0}".format(historyInfo.datetimeStart)
     print " End: {0}".format(historyInfo.datetimeEnd);
     print " Size: {0}".format(historyInfo.historySize);
     
     print "Getting history"
-    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max)
+    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
 
     # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
     #with open('hisory_data.dat', 'wb') as output:

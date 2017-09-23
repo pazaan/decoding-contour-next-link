@@ -145,6 +145,8 @@ class NGPHistoryEvent:
             return BloodGlucoseReadingEvent(self.eventData)
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:            
             return NormalBolusDeliveredEvent(self.eventData);
+        #elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:            
+        #    return SensorGlucoseReadingsEvent(self.eventData);
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -170,8 +172,6 @@ class NGPHistoryEvent:
 #         return new UserTimeDateEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.LOW_RESERVOIR:
 #         return new LowReservoirEvent(this.eventData);
-#       case NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:
-#         return new SensorGlucoseReadingsEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.BG_READING:
 #         return new BloodGlucoseReadingEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.CLOSED_LOOP_BG_READING:
