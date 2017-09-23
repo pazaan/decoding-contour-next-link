@@ -20,7 +20,7 @@ import Crypto.Cipher.AES # pip install PyCrypto
 import sqlite3
 import hashlib
 import re
-#import pickle # needed for local history export
+import pickle # needed for local history export
 import lzo #pip install python-lzo
 from pump_history_parser import NGPHistoryEvent
 from pump_history_parser import BloodGlucoseReadingEvent
@@ -1318,18 +1318,18 @@ def pumpDownload(mt):
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
     
     print "Getting history info"
-    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
     #print binascii.hexlify( historyInfo.responsePayload,  )
     print " Start: {0}".format(historyInfo.datetimeStart)
     print " End: {0}".format(historyInfo.datetimeEnd);
     print " Size: {0}".format(historyInfo.historySize);
     
     print "Getting history"
-    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
 
     # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
-    #with open('hisory_data.dat', 'wb') as output:
-    #    pickle.dump(history, output)
+    with open('history_data.dat', 'wb') as output:
+        pickle.dump(history_pages, output)
 
     events = mt.processPumpHistory(history_pages)
     print "# All events:"
