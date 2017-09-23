@@ -2,6 +2,46 @@ from helpers import DateTimeHelper
 import struct
 import binascii
 
+class NGPConstants:
+    class BG_UNITS:
+        MG_DL = 0
+        MMOL_L = 1
+    class CARB_UNITS:
+        GRAMS = 0
+        EXCHANGES = 1
+    class BG_SOURCE:
+        EXTERNAL_METER = 1
+        BOLUS_WIZARD = 2,
+        BG_EVENT_MARKER = 3
+        SENSOR_CAL = 4
+    class BG_ORIGIN:
+        MANUALLY_ENTERED = 0
+        RECEIVED_FROM_RF = 1
+    class BG_CONTEXT:
+        BG_READING_RECEIVED = 0
+        USER_ACCEPTED_REMOTE_BG = 1
+        USER_REJECTED_REMOTE_BG = 2
+        REMOTE_BG_ACCEPTANCE_SCREEN_TIMEOUT = 3
+        BG_SI_PASS_RESULT_RECD_FRM_GST = 4
+        BG_SI_FAIL_RESULT_RECD_FRM_GST = 5
+        BG_SENT_FOR_CALIB = 6
+        USER_REJECTED_SENSOR_CALIB = 7
+        ENTERED_IN_BG_ENTRY = 8
+        ENTERED_IN_MEAL_WIZARD = 9
+        ENTERED_IN_BOLUS_WIZRD = 10
+        ENTERED_IN_SENSOR_CALIB = 11
+        ENTERED_AS_BG_MARKER = 12
+    class BOLUS_SOURCE:
+        MANUAL = 0
+        BOLUS_WIZARD = 1
+        EASY_BOLUS = 2
+        PRESET_BOLUS = 4
+
+    class BOLUS_STEP_SIZE:
+        STEP_0_POINT_025 = 0
+        STEP_0_POINT_05 = 1
+        STEP_0_POINT_1 = 2
+
 class NGPHistoryEvent:
     class EVENT_TYPE:
         TIME_RESET = 0x02
@@ -145,6 +185,8 @@ class NGPHistoryEvent:
             return BloodGlucoseReadingEvent(self.eventData)
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:            
             return NormalBolusDeliveredEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.BOLUS_WIZARD_ESTIMATE:
+            return BolusWizardEstimateEvent(self.eventData)
         #elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:            
         #    return SensorGlucoseReadingsEvent(self.eventData);
         return self
@@ -285,4 +327,99 @@ class NormalBolusDeliveredEvent(BolusDeliveredEvent):
     def activeInsulin(self):
         return struct.unpack( '>I', self.eventData[0x16:0x1A] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
 
+
+class BolusWizardEstimateEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} BG Input:{1}, Carbs:{2}'.format(NGPHistoryEvent.__str__(self), self.bgUnits, self.carbUnits)
+    
+    @property
+    def bgUnits(self):
+        # See NGPUtil.NGPConstants.BG_UNITS
+        return struct.unpack( '>B', self.eventData[0x0B:0x0C] )[0]#return this.eventData[0x0B];
+
+    @property
+    def carbUnits(self):
+        # See NGPUtil.NGPConstants.CARB_UNITS
+        return struct.unpack( '>B', self.eventData[0x0C:0x0D] )[0]#return this.eventData[0x0C];
+  
+    @property
+    def bolusStepSize(self):
+        # See NGPUtil.NGPConstants.BOLUS_STEP_SIZE
+        return struct.unpack( '>B', self.eventData[0x2F:0x30] )[0]#return this.eventData[0x2F];
+
+    @property
+    def bgInput(self):
+        bgInput  = struct.unpack( '>H', self.eventData[0x0D:0xF] )[0]#this.eventData.readUInt16BE(0x0D);
+        if self.bgUnits == NGPConstants.BG_UNITS.MG_DL:
+            return bgInput 
+        else:
+            return bgInput  / 10.0
+    
+    @property
+    def carbInput(self):
+        carbs = struct.unpack( '>H', self.eventData[0x0F:0x11] )[0]#this.eventData.readUInt16BE(0x0F)
+        if self.carbUnits == NGPConstants.CARB_UNITS.GRAMS:
+            return carbs
+        else:
+            return carbs / 10.0
+
+'''
+
+  get carbRatio() {
+    const carbRatio = this.eventData.readUInt32BE(0x13);
+    return this.carbUnits === NGPUtil.NGPConstants.CARB_UNITS.GRAMS ?
+      carbRatio / 10.0 : carbRatio / 1000.0;
+  }
+
+  get isf() {
+    const isf = this.eventData.readUInt16BE(0x11);
+    return this.bgUnits === NGPUtil.NGPConstants.BG_UNITS.MG_DL ? isf : isf / 10.0;
+  }
+
+  get lowBgTarget() {
+    const bgTarget = this.eventData.readUInt16BE(0x17);
+    return this.bgUnits === NGPUtil.NGPConstants.BG_UNITS.MG_DL ? bgTarget : bgTarget / 10.0;
+  }
+
+  get highBgTarget() {
+    const bgTarget = this.eventData.readUInt16BE(0x19);
+    return this.bgUnits === NGPUtil.NGPConstants.BG_UNITS.MG_DL ? bgTarget : bgTarget / 10.0;
+  }
+
+  get correctionEstimate() {
+    /* eslint-disable no-bitwise */
+    return ((this.eventData[0x1B] << 8) |
+      (this.eventData[0x1C] << 8) | (this.eventData[0x1D] << 8) | this.eventData[0x1E]) / 10000.0;
+    /* eslint-enable no-bitwise */
+  }
+
+  get foodEstimate() {
+    return this.eventData.readUInt32BE(0x1F) / 10000.0;
+  }
+
+  get iob() {
+    return this.eventData.readUInt32BE(0x23) / 10000.0;
+  }
+
+  get iobAdjustment() {
+    return this.eventData.readUInt32BE(0x27) / 10000.0;
+  }
+
+  get bolusWizardEstimate() {
+    return this.eventData.readUInt32BE(0x2B) / 10000.0;
+  }
+
+  get finalEstimate() {
+    return this.eventData.readUInt32BE(0x31) / 10000.0;
+  }
+
+  get estimateModifiedByUser() {
+    // eslint-disable-next-line no-bitwise
+    return (this.eventData.readUInt32BE(0x30) & 1) === 1;
+  }
+}
+'''
         
