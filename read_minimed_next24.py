@@ -1171,7 +1171,7 @@ class Medtronic600SeriesDriver( object ):
                 eventList.extend(NGPHistoryEvent(eventData).eventInstance().allNestedEvents())
         return eventList
                 
-    def processPumpHistory( self, historySegments, historyType):
+    def processPumpHistory( self, historySegments, historyType = HISTORY_DATA_TYPE.PUMP_DATA):
         historyEvents = []
         for segment in historySegments:
             decodedBlocks = self.decodePumpSegment(segment, historyType)
