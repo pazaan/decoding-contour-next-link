@@ -333,7 +333,7 @@ class BolusWizardEstimateEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} BG Input:{1}, Carbs:{2}'.format(NGPHistoryEvent.__str__(self), self.bgUnits, self.carbUnits)
+        return '{0} BG Input:{1}, Carbs:{2}'.format(NGPHistoryEvent.__str__(self), self.bgInput, self.carbInput)
     
     @property
     def bgUnits(self):
