@@ -1123,9 +1123,9 @@ class Medtronic600SeriesDriver( object ):
             historyCompressed = struct.unpack('>B', segmentPayload[11:12])[0]
             logger.debug("IsCompressed: {0}".format(historyCompressed))
 
-            if dataType != 0x02: # Check HISTORY_DATA_TYPE (PUMP_DATA: 2, SENSOR_DATA: 3)
-                logger.error('History type in response: {0} {1}'.format(type(dataType), binascii.hexlify(dataType))) 
-                raise InvalidMessageError('Unexpected history type in response')
+            #if dataType != 0x02: # Check HISTORY_DATA_TYPE (PUMP_DATA: 2, SENSOR_DATA: 3)
+            #    logger.error('History type in response: {0} {1}'.format(type(dataType), dataType)) 
+            #    raise InvalidMessageError('Unexpected history type in response')
 
             # Check that we have the correct number of bytes in this message
             if len(segmentPayload) - HEADER_SIZE != historySizeCompressed:
@@ -1168,7 +1168,7 @@ class Medtronic600SeriesDriver( object ):
                 eventSize = struct.unpack('>B', page[pos + 2 : pos + 3])[0] # page[pos + 2];
                 eventData = page[pos : pos + eventSize] # page.slice(pos, pos + eventSize);
                 pos += eventSize
-                eventList.append(NGPHistoryEvent(eventData).eventInstance())
+                eventList.extend(NGPHistoryEvent(eventData).eventInstance().allNestedEvents())
         return eventList
                 
     def processPumpHistory( self, historySegments):

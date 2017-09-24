@@ -46,3 +46,10 @@ class DateTimeHelper( object ):
             rtc = 0xFFFFFFFF
         #print ' ### DateTimeHelper.rtcFromDate rtc:0x{0:x} {0} offset:0x{1:x} {1} epochTime:0x{2:x} {2}'.format(rtc, offset, epochTime)                    
         return rtc
+
+class NumberHelper( object):
+    @staticmethod
+    def make32BitIntFromNBitSignedInt(signedValue, nBits):
+        sign = ((0xFFFFFFFF << nBits) & 0xFFFFFFFF) * ((signedValue >> nBits - 1) & 1);
+        return (sign | signedValue) & 0xFFFFFFFF;
+

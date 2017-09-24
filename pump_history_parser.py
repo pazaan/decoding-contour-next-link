@@ -1,6 +1,7 @@
-from helpers import DateTimeHelper
+from helpers import DateTimeHelper, NumberHelper
 import struct
 import binascii
+from datetime import timedelta
 
 class NGPHistoryEvent:
     class EVENT_TYPE:
@@ -112,6 +113,7 @@ class NGPHistoryEvent:
         SQUARE_BOLUS_DELIVERED = 0xDD
         DUAL_BOLUS_PART_DELIVERED = 0xDE
         CLOSED_LOOP_TRANSITION = 0xDF
+        GENERATED__SENSOR_GLUCOSE_READINGS_EXTENDED_ITEM = 0xD601 #this is not a pump event, it's generated from single items within SENSOR_GLUCOSE_READINGS_EXTENDED 
 
     def __init__(self, eventData):
         self.eventData = eventData;
@@ -140,13 +142,16 @@ class NGPHistoryEvent:
     def __str__(self):
         return '{0} {1:x} {2}'.format(self.__class__.__name__, self.eventType, self.timestamp)
     
+    def allNestedEvents(self):
+        yield self.eventInstance()
+    
     def eventInstance(self):
         if self.eventType == NGPHistoryEvent.EVENT_TYPE.BG_READING:
             return BloodGlucoseReadingEvent(self.eventData)
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:            
             return NormalBolusDeliveredEvent(self.eventData);
-        #elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:            
-        #    return SensorGlucoseReadingsEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:            
+            return SensorGlucoseReadingsEvent(self.eventData);
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -285,4 +290,127 @@ class NormalBolusDeliveredEvent(BolusDeliveredEvent):
     def activeInsulin(self):
         return struct.unpack( '>I', self.eventData[0x16:0x1A] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
 
+class SensorGlucoseReadingsEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
         
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))    
+
+    @property
+    def minutesBetweenReadings(self):
+        return struct.unpack( '>B', self.eventData[0x0B:0x0C] )[0]#return this.eventData[0x0B];
+
+    @property
+    def numberOfReadings(self):
+        return struct.unpack( '>B', self.eventData[0x0C:0x0D] )[0]#return this.eventData[0x0C];
+
+    @property
+    def predictedSg(self):
+        return struct.unpack( '>H', self.eventData[0x0D:0x0F] )[0]#return this.eventData.readUInt16BE(0x0D);
+
+    def allNestedEvents(self):
+        pos = 15
+        for i in range(0, self.numberOfReadings):
+            #const timestamp = new NGPUtil.NGPTimestamp(this.timestamp.rtc - (i * this.minutesBetweenReadings * 60), this.timestamp.offset);
+            timestamp = self.timestamp + timedelta(minutes = i * self.minutesBetweenReadings)
+            payloadDecoded = struct.unpack( '>BBHBhBB', self.eventData[pos:pos + 9] )
+
+            #const sg = ((this.eventData[pos] & 3) << 8) | this.eventData[pos + 1];
+            sg = (payloadDecoded[0] & 0x03) << 8 | payloadDecoded[1]            
+            #      const vctr = NGPUtil.make32BitIntFromNBitSignedInt((((this.eventData[pos] >> 2) & 3) << 8) | this.eventData[pos + 4], 10) / 100.0;
+            # not sure what this value means so cannot say if it's correct
+            vctr = NumberHelper.make32BitIntFromNBitSignedInt((((payloadDecoded[0] >> 0x02) & 0x03) << 8) | payloadDecoded[3], 10) / 100.0;
+            
+            #const isig = this.eventData.readInt16BE(pos + 2) / 100.0;
+            isig = payloadDecoded[2] / 100.0;
+            #const rateOfChange = this.eventData.readInt16BE(pos + 5) / 100.0;
+            rateOfChange = payloadDecoded[4] / 100.0;
+            #const readingStatus = this.eventData[pos + 8];
+            readingStatus = payloadDecoded[6];
+            #const sensorStatus = this.eventData[pos + 7];
+            sensorStatus = payloadDecoded[5];
+            
+            #const backfilledData = (readingStatus & 1) === 1;
+            backfilledData = (readingStatus & 0x01) == 0x01
+            #const settingsChanged = (readingStatus & 2) === 1; #bug?
+            settingsChanged = (readingStatus & 0x02) == 0x02
+            #const noisyData = sensorStatus === 1;
+            noisyData = sensorStatus == 1
+            #const discardData = sensorStatus === 2;
+            discardData = sensorStatus == 2
+            #const sensorError = sensorStatus === 3;
+            sensorError = sensorStatus == 3
+            # TODO - handle all the error states where sg >= 769 (see ParseCGM.js)?
+
+
+            yield SensorGlucoseReading(timestamp = timestamp, 
+                                       dynamicActionRequestor = self.dynamicActionRequestor, 
+                                       sg = sg,
+                                       predictedSg = self.predictedSg,
+                                       noisyData = noisyData,
+                                       discardData = discardData,
+                                       sensorError = sensorError,
+                                       backfilledData = backfilledData,
+                                       settingsChanged = settingsChanged,
+                                       isig = isig,
+                                       rateOfChange = rateOfChange,
+                                       vctr = vctr)
+            pos += 9;
+
+
+class SensorGlucoseReading(NGPHistoryEvent):
+    def __init__(self, 
+                 timestamp, 
+                 dynamicActionRequestor, 
+                 sg, 
+                 predictedSg = 0, 
+                 isig = 0, 
+                 vctr = 0, 
+                 rateOfChange = 0, 
+                 backfilledData = False,
+                 settingsChanged = False,
+                 noisyData = False,
+                 discardData = False,
+                 sensorError = False):
+        self.timestamp = timestamp
+        self.dynamicActionRequestor = dynamicActionRequestor
+        self.sg = sg
+        self.predictedSg = predictedSg
+        self.isig = isig
+        self.vctr = vctr
+        self.rateOfChange = rateOfChange
+        self.backfilledData = backfilledData
+        self.settingsChanged = settingsChanged
+        self.noisyData = noisyData
+        self.discardData = discardData
+        self.sensorError = sensorError
+    
+    def __str__(self):
+        return ("{0} SG:{1}, predictedSg:{2}, "
+                "isig:{6}, rateOfChange:{7}, "
+                "noisyData:{3}, discardData: {4}, sensorError:{5}").format(
+            NGPHistoryEvent.__str__(self), 
+            self.sg, 
+            self.predictedSg,        
+            self.noisyData,
+            self.discardData,
+            self.sensorError,
+            self.isig,
+            self.rateOfChange)
+
+    @property
+    def source(self):
+        # No idea what "source" means.
+        return struct.unpack( '>B', self.eventData[1:2] )[0] # self.eventData[0x01];
+
+    @property
+    def size(self):
+        return 0
+
+    @property
+    def eventType(self):
+        return NGPHistoryEvent.EVENT_TYPE.GENERATED__SENSOR_GLUCOSE_READINGS_EXTENDED_ITEM
+
+    def eventInstance(self):
+        return self
