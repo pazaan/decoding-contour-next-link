@@ -1103,7 +1103,7 @@ class Medtronic600SeriesDriver( object ):
             logger.error("Transmission finished, but END_HISTORY_TRANSMISSION did not arrive")
             raise DataIncompleteError("Transmission finished, but END_HISTORY_TRANSMISSION did not arrive")
         
-    def decodePumpSegment(self, encodedFragmentedSegment):
+    def decodePumpSegment(self, encodedFragmentedSegment, historyType = HISTORY_DATA_TYPE.PUMP_DATA):
         decodedBlocks = []
         segmentPayload = encodedFragmentedSegment[0]
         
@@ -1123,9 +1123,9 @@ class Medtronic600SeriesDriver( object ):
             historyCompressed = struct.unpack('>B', segmentPayload[11:12])[0]
             logger.debug("IsCompressed: {0}".format(historyCompressed))
 
-            #if dataType != 0x02: # Check HISTORY_DATA_TYPE (PUMP_DATA: 2, SENSOR_DATA: 3)
-            #    logger.error('History type in response: {0} {1}'.format(type(dataType), dataType)) 
-            #    raise InvalidMessageError('Unexpected history type in response')
+            if dataType != historyType: # Check HISTORY_DATA_TYPE (PUMP_DATA: 2, SENSOR_DATA: 3)
+                logger.error('History type in response: {0} {1}'.format(type(dataType), dataType)) 
+                raise InvalidMessageError('Unexpected history type in response')
 
             # Check that we have the correct number of bytes in this message
             if len(segmentPayload) - HEADER_SIZE != historySizeCompressed:
@@ -1171,10 +1171,10 @@ class Medtronic600SeriesDriver( object ):
                 eventList.extend(NGPHistoryEvent(eventData).eventInstance().allNestedEvents())
         return eventList
                 
-    def processPumpHistory( self, historySegments):
+    def processPumpHistory( self, historySegments, historyType):
         historyEvents = []
         for segment in historySegments:
-            decodedBlocks = self.decodePumpSegment(segment)
+            decodedBlocks = self.decodePumpSegment(segment, historyType)
             historyEvents += self.decodeEvents(decodedBlocks) 
         return historyEvents
 
@@ -1317,26 +1317,46 @@ def pumpDownload(mt):
     print "Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining )
     print "Battery remaining: {0}%".format( status.batteryLevelPercentage )
     
-    print "Getting history info"
-    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    print "Getting Pump history info"
+    historyInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
     #print binascii.hexlify( historyInfo.responsePayload,  )
-    print " Start: {0}".format(historyInfo.datetimeStart)
-    print " End: {0}".format(historyInfo.datetimeEnd);
-    print " Size: {0}".format(historyInfo.historySize);
+    print " Pump Start: {0}".format(historyInfo.datetimeStart)
+    print " Pump End: {0}".format(historyInfo.datetimeEnd);
+    print " Pump Size: {0}".format(historyInfo.historySize);
     
-    print "Getting history"
-    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    print "Getting Pump history"
+    history_pages = mt.getPumpHistory(historyInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
 
     # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
-    with open('history_data.dat', 'wb') as output:
-        pickle.dump(history_pages, output)
+    #with open('history_data.dat', 'wb') as output:
+    #    pickle.dump(history_pages, output)
 
-    events = mt.processPumpHistory(history_pages)
-    print "# All events:"
+    events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
+    print "# All Pump events:"
     for ev in events:
-        if isinstance(ev, BloodGlucoseReadingEvent):
-            print ev
-    print "# End events"
+        print " Pump: ", ev
+    print "# End Pump events"
+
+    print "Getting sensor history info"
+    sensHistoryInfo = mt.getPumpHistoryInfo(datetime.datetime(2017, 8, 23), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    #print binascii.hexlify( historyInfo.responsePayload,  )
+    print " Sensor Start: {0}".format(sensHistoryInfo.datetimeStart)
+    print " Sensor End: {0}".format(sensHistoryInfo.datetimeEnd);
+    print " Sensor Size: {0}".format(sensHistoryInfo.historySize);
+    
+    print "Getting Sensor history"
+    sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, datetime.datetime(2016, 1, 1), datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+
+    # uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
+    #with open('sensor_history_data.dat', 'wb') as output:
+    #    pickle.dump(sensor_history_pages, output)
+
+    sensorEvents = mt.processPumpHistory(sensor_history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
+    print "# All Sensor events:"
+    for ev in sensorEvents:
+        print " Sensor", ev
+    print "# End Sensor events"
+
     
     #print binascii.hexlify( mt.doRemoteSuspend().responsePayload )
 
