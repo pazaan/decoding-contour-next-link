@@ -1,5 +1,7 @@
 import datetime
+import struct
 from dateutil import tz
+
 
 class DateTimeHelper( object ):
     # Base time is midnight 1st Jan 2000 (UTC)
@@ -53,3 +55,19 @@ class NumberHelper( object):
         sign = ((0xFFFFFFFF << nBits) & 0xFFFFFFFF) * ((signedValue >> nBits - 1) & 1);
         return (sign | signedValue) & 0xFFFFFFFF;
 
+class BinaryDataDecoder(object):
+    @staticmethod
+    def readUInt64BE(binData, offset):
+        return struct.unpack( '>Q', binData[offset:offset + 8] )[0]
+
+    @staticmethod
+    def readUInt32BE(binData, offset):
+        return struct.unpack( '>I', binData[offset:offset + 4] )[0]
+    
+    @staticmethod
+    def readUInt16BE(binData, offset):
+        return struct.unpack( '>H', binData[offset:offset + 2] )[0]
+
+    @staticmethod
+    def readByte(binData, offset):
+        return struct.unpack( '>B', binData[offset:offset + 1] )[0]

@@ -1,7 +1,85 @@
-from helpers import DateTimeHelper, NumberHelper
+from helpers import DateTimeHelper, BinaryDataDecoder, NumberHelper
 import struct
-import binascii
 from datetime import timedelta
+
+class NGPConstants:
+    class BG_UNITS:
+        MG_DL = 0
+        MMOL_L = 1
+    class CARB_UNITS:
+        GRAMS = 0
+        EXCHANGES = 1
+    class BG_SOURCE:
+        EXTERNAL_METER = 1
+        BOLUS_WIZARD = 2,
+        BG_EVENT_MARKER = 3
+        SENSOR_CAL = 4
+    class BG_ORIGIN:
+        MANUALLY_ENTERED = 0
+        RECEIVED_FROM_RF = 1
+    class BG_CONTEXT:
+        BG_READING_RECEIVED = 0
+        USER_ACCEPTED_REMOTE_BG = 1
+        USER_REJECTED_REMOTE_BG = 2
+        REMOTE_BG_ACCEPTANCE_SCREEN_TIMEOUT = 3
+        BG_SI_PASS_RESULT_RECD_FRM_GST = 4
+        BG_SI_FAIL_RESULT_RECD_FRM_GST = 5
+        BG_SENT_FOR_CALIB = 6
+        USER_REJECTED_SENSOR_CALIB = 7
+        ENTERED_IN_BG_ENTRY = 8
+        ENTERED_IN_MEAL_WIZARD = 9
+        ENTERED_IN_BOLUS_WIZRD = 10
+        ENTERED_IN_SENSOR_CALIB = 11
+        ENTERED_AS_BG_MARKER = 12
+    class BOLUS_SOURCE:
+        MANUAL = 0
+        BOLUS_WIZARD = 1
+        EASY_BOLUS = 2
+        PRESET_BOLUS = 4
+
+    class BOLUS_STEP_SIZE:
+        STEP_0_POINT_025 = 0
+        STEP_0_POINT_05 = 1
+        STEP_0_POINT_1 = 2
+
+    BASAL_PATTERN_NAME = [
+        'Pattern 1',
+        'Pattern 2',
+        'Pattern 3',
+        'Pattern 4',
+        'Pattern 5',
+        'Workday',
+        'Day Off',
+        'Sick Day',
+        ]
+
+    class TEMP_BASAL_TYPE:
+        ABSOLUTE = 0
+        PERCENT = 1
+
+    TEMP_BASAL_PRESET_NAME = [
+      'Not Preset',
+      'Temp 1',
+      'Temp 2',
+      'Temp 3',
+      'Temp 4',
+      'High Activity',
+      'Moderate Activity',
+      'Low Activity',
+      'Sick',
+      ]
+
+    BOLUS_PRESET_NAME = [
+      'Not Preset',
+      'Bolus 1',
+      'Bolus 2',
+      'Bolus 3',
+      'Bolus 4',
+      'Breakfast',
+      'Lunch',
+      'Dinner',
+      'Snack',
+    ]
 
 class NGPHistoryEvent:
     class EVENT_TYPE:
@@ -121,23 +199,23 @@ class NGPHistoryEvent:
     @property
     def source(self):
         # No idea what "source" means.
-        return struct.unpack( '>B', self.eventData[1:2] )[0] # self.eventData[0x01];
+        return BinaryDataDecoder.readByte(self.eventData, 0x01)# self.eventData[0x01];
 
     @property
     def size(self):
-        return struct.unpack( '>B', self.eventData[2:3] )[0]#this.eventData[0x02];
+        return BinaryDataDecoder.readByte(self.eventData, 0x02)#this.eventData[0x02];
 
     @property
     def eventType(self):
-        return struct.unpack( '>B', self.eventData[0:1] )[0]#this.eventData[0];
+        return BinaryDataDecoder.readByte(self.eventData, 0x00)#this.eventData[0];
 
     @property
     def timestamp(self):
-        return DateTimeHelper.decodeDateTime( struct.unpack( '>Q', self.eventData[3:11] )[0] )
+        return DateTimeHelper.decodeDateTime(BinaryDataDecoder.readUInt64BE(self.eventData, 0x03))
 
     @property
     def dynamicActionRequestor(self):
-        return struct.unpack( '>B', self.eventData[1:2] )[0] # self.eventData[0x01];
+        return BinaryDataDecoder.readByte(self.eventData, 0x01) # self.eventData[0x01];
     
     def __str__(self):
         return '{0} {1:x} {2}'.format(self.__class__.__name__, self.eventType, self.timestamp)
@@ -151,7 +229,11 @@ class NGPHistoryEvent:
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_DELIVERED:            
             return NormalBolusDeliveredEvent(self.eventData);
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_GLUCOSE_READINGS_EXTENDED:            
-            return SensorGlucoseReadingsEvent(self.eventData);
+            return SensorGlucoseReadingsEvent(self.eventData)
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.BOLUS_WIZARD_ESTIMATE:
+            return BolusWizardEstimateEvent(self.eventData)
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.BASAL_SEGMENT_START:
+            return BasalSegmentStartEvent(self.eventData)
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -226,7 +308,7 @@ class BloodGlucoseReadingEvent(NGPHistoryEvent):
     @property
     def bgValue(self):
         # bgValue is always in mg/dL.
-        return struct.unpack( '>H', self.eventData[12:14] )[0]#this.eventData.readUInt16BE(0x0C);
+        return BinaryDataDecoder.readUInt16BE(self.eventData, 0x0C)#this.eventData.readUInt16BE(0x0C);
 
 #   get bgUnits() {
 #     // bgValue is always in mg/dL. bgUnits tells us which units the device is set in.
@@ -258,18 +340,16 @@ class BolusDeliveredEvent(NGPHistoryEvent):
 
     @property
     def bolusSource(self):
-        return struct.unpack( '>B', self.eventData[0x0B:0x0C] )[0]#return this.eventData[0x0B];
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
 
     @property
     def bolusNumber(self):
-        return struct.unpack( '>B', self.eventData[0x0C:0x0D] )[0]#return this.eventData[0x0C];
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)#return this.eventData[0x0C];
 
     @property
     def presetBolusNumber(self):
         # See NGPUtil.NGPConstants.BOLUS_PRESET_NAME
-        return struct.unpack( '>B', self.eventData[0x0D:0x0E] )[0]#return this.eventData[0x0D];
-    
-
+        return BinaryDataDecoder.readByte(self.eventData, 0x0D)#return this.eventData[0x0D];
 
 class NormalBolusDeliveredEvent(BolusDeliveredEvent):
     def __init__(self, eventData):
@@ -280,15 +360,15 @@ class NormalBolusDeliveredEvent(BolusDeliveredEvent):
 
     @property
     def deliveredAmount(self):
-        return struct.unpack( '>I', self.eventData[0x12:0x16] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x12) / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
 
     @property
     def programmedAmount(self):
-        return struct.unpack( '>I', self.eventData[0x0E:0x12] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x0E) / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
 
     @property
     def activeInsulin(self):
-        return struct.unpack( '>I', self.eventData[0x16:0x1A] )[0] / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x16) / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
 
 class SensorGlucoseReadingsEvent(NGPHistoryEvent):
     def __init__(self, eventData):
@@ -299,15 +379,15 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
 
     @property
     def minutesBetweenReadings(self):
-        return struct.unpack( '>B', self.eventData[0x0B:0x0C] )[0]#return this.eventData[0x0B];
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
 
     @property
     def numberOfReadings(self):
-        return struct.unpack( '>B', self.eventData[0x0C:0x0D] )[0]#return this.eventData[0x0C];
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)#return this.eventData[0x0C];
 
     @property
     def predictedSg(self):
-        return struct.unpack( '>H', self.eventData[0x0D:0x0F] )[0]#return this.eventData.readUInt16BE(0x0D);
+        return BinaryDataDecoder.readUInt16BE(self.eventData, 0x0D)#return this.eventData.readUInt16BE(0x0D);
 
     def allNestedEvents(self):
         pos = 15
@@ -402,7 +482,7 @@ class SensorGlucoseReading(NGPHistoryEvent):
     @property
     def source(self):
         # No idea what "source" means.
-        return struct.unpack( '>B', self.eventData[1:2] )[0] # self.eventData[0x01];
+        return BinaryDataDecoder.readByte(self.eventData, 0x01)# self.eventData[0x01];
 
     @property
     def size(self):
@@ -414,3 +494,132 @@ class SensorGlucoseReading(NGPHistoryEvent):
 
     def eventInstance(self):
         return self
+
+class BolusWizardEstimateEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return ("{0} BG Input:{1}, "
+                "Carbs:{2}, "
+                "Carb ratio: {4}, "
+                "Food est.:{3}, "
+                "Correction est.:{5}, "
+                "Wizard est.: {6}, "
+                "User modif.: {7}, "
+                "Final est.: {8}, "
+                ).format(NGPHistoryEvent.__str__(self), 
+                                                    self.bgInput, 
+                                                    self.carbInput,
+                                                    self.foodEstimate,
+                                                    self.carbRatio,
+                                                    self.correctionEstimate,
+                                                    self.bolusWizardEstimate,
+                                                    self.estimateModifiedByUser,
+                                                    self.finalEstimate)
+    
+    @property
+    def bgUnits(self):
+        # See NGPUtil.NGPConstants.BG_UNITS
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+
+    @property
+    def carbUnits(self):
+        # See NGPUtil.NGPConstants.CARB_UNITS
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)#return this.eventData[0x0C];
+  
+    @property
+    def bolusStepSize(self):
+        # See NGPUtil.NGPConstants.BOLUS_STEP_SIZE
+        return BinaryDataDecoder.readByte(self.eventData, 0x2F)#return this.eventData[0x2F];
+
+    @property
+    def bgInput(self):
+        bgInput  = BinaryDataDecoder.readUInt16BE(self.eventData, 0x0D)#this.eventData.readUInt16BE(0x0D);
+        return bgInput if self.bgUnits == NGPConstants.BG_UNITS.MG_DL else bgInput  / 10.0
+    
+    @property
+    def carbInput(self):
+        carbs = BinaryDataDecoder.readUInt16BE(self.eventData, 0x0F)#this.eventData.readUInt16BE(0x0F)
+        return carbs if self.carbUnits == NGPConstants.CARB_UNITS.GRAMS else carbs / 10.0
+
+    @property
+    def foodEstimate(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x1F) / 10000.0;
+
+    @property
+    def carbRatio(self):
+        carbRatio = BinaryDataDecoder.readUInt32BE(self.eventData, 0x13);
+        return carbRatio / 10.0 if (self.carbUnits == NGPConstants.CARB_UNITS.GRAMS) else carbRatio / 1000.0
+
+    @property
+    def isf(self):
+        isf = BinaryDataDecoder.readUInt16BE(self.eventData, 0x11);
+        return isf if self.bgUnits == NGPConstants.BG_UNITS.MG_DL else isf / 10.0
+
+    @property
+    def lowBgTarget(self):
+        bgTarget = BinaryDataDecoder.readUInt16BE(self.eventData, 0x17)
+        return bgTarget if self.bgUnits == NGPConstants.BG_UNITS.MG_DL else bgTarget / 10.0
+
+
+    @property
+    def highBgTarget(self):
+        bgTarget = BinaryDataDecoder.readUInt16BE(self.eventData, 0x19)
+        return bgTarget if self.bgUnits == NGPConstants.BG_UNITS.MG_DL else bgTarget / 10.0;
+
+    @property
+    def correctionEstimate(self):
+        return ((BinaryDataDecoder.readByte(self.eventData, 0x1B) << 8) |
+                (BinaryDataDecoder.readByte(self.eventData, 0x1C) << 8) | 
+                (BinaryDataDecoder.readByte(self.eventData, 0x1D) << 8) | 
+                BinaryDataDecoder.readByte(self.eventData, 0x1E)) / 10000.0;
+
+    @property
+    def iob(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x23) / 10000.0
+
+    @property
+    def iobAdjustment(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x27) / 10000.0
+
+    @property
+    def bolusWizardEstimate(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x2B) / 10000.0
+
+    @property
+    def finalEstimate(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x31) / 10000.0
+
+    @property
+    def estimateModifiedByUser(self):
+        return (BinaryDataDecoder.readUInt32BE(self.eventData, 0x30) & 0x01) == 0x01;
+
+class BasalSegmentStartEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Basal Rate:{1}, Pattern#:{2} \'{4}\', Segment#:{3}'.format(NGPHistoryEvent.__str__(self), 
+                                                                    self.rate, 
+                                                                    self.patternNumber,
+                                                                    self.segmentNumber,
+                                                                    self.patternName)
+
+    @property
+    def rate(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x0D) / 10000.0 # return this.eventData.readUInt32BE(0x0D) / 10000.0;
+
+    @property
+    def patternNumber(self):
+        # See NGPUtil.NGPConstants.CARB_UNITS
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+
+    @property
+    def segmentNumber(self):
+        # See NGPUtil.NGPConstants.CARB_UNITS
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)#return this.eventData[0x0C];
+
+    @property 
+    def patternName(self):
+        return NGPConstants.BASAL_PATTERN_NAME[self.patternNumber - 1];
