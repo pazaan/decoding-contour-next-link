@@ -266,6 +266,9 @@ class NGPHistoryEvent:
     
     def allNestedEvents(self):
         yield self.eventInstance()
+        
+    def postProcess(self, histryEvents):
+        pass
     
     def eventInstance(self):
         if self.eventType == NGPHistoryEvent.EVENT_TYPE.BG_READING:
@@ -304,6 +307,8 @@ class NGPHistoryEvent:
             return EndOfDayMarkerEvent(self.eventData);    
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SOURCE_ID_CONFIGURATION:
             return SourceIdConfigurationEvent(self.eventData);    
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.NORMAL_BOLUS_PROGRAMMED:
+            return NormalBolusProgrammedEvent(self.eventData)
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -400,6 +405,7 @@ class BloodGlucoseReadingEvent(NGPHistoryEvent):
 class BolusDeliveredEvent(NGPHistoryEvent):
     def __init__(self, eventData):
         NGPHistoryEvent.__init__(self, eventData)
+        self.programmedEvent = None
         
     def __str__(self):
         return '{0} Source:{1}, Number:{2}, presetBolusNumber:{3}'.format(NGPHistoryEvent.__shortstr__(self), self.bolusSource, self.bolusNumber, self.presetBolusNumber)
@@ -417,12 +423,22 @@ class BolusDeliveredEvent(NGPHistoryEvent):
         # See NGPUtil.NGPConstants.BOLUS_PRESET_NAME
         return BinaryDataDecoder.readByte(self.eventData, 0x0D)#return this.eventData[0x0D];
 
+    def postProcess(self, histryEvents):
+        matches = [x for x in histryEvents 
+                   if isinstance(x, NormalBolusProgrammedEvent) 
+                   and x.bolusNumber == self.bolusNumber
+                   and x.timestamp < self.timestamp
+                   and self.timestamp - x.timestamp < timedelta(minutes = 5)]
+        if len(matches) == 1:
+            self.programmedEvent = matches[0]
+
+
 class NormalBolusDeliveredEvent(BolusDeliveredEvent):
     def __init__(self, eventData):
-        NGPHistoryEvent.__init__(self, eventData)
+        BolusDeliveredEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Del:{1}, Prog:{2}, Active:{3}'.format(NGPHistoryEvent.__shortstr__(self), self.deliveredAmount, self.programmedAmount, self.activeInsulin)
+        return '{0} Del:{1}, Prog:{2}, Active:{3}, Programmed: {4}'.format(NGPHistoryEvent.__shortstr__(self), self.deliveredAmount, self.programmedAmount, self.activeInsulin, self.programmedEvent)
 
     @property
     def deliveredAmount(self):
@@ -435,6 +451,56 @@ class NormalBolusDeliveredEvent(BolusDeliveredEvent):
     @property
     def activeInsulin(self):
         return BinaryDataDecoder.readUInt32BE(self.eventData, 0x16) / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
+            
+class BolusProgrammedEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        self.bolusWizardEvent = None
+        
+    def __str__(self):
+        return '{0} Source:{1}, Number:{2}, presetBolusNumber:{3}'.format(NGPHistoryEvent.__str__(self), self.bolusSource, self.bolusNumber, self.presetBolusNumber)
+
+    @property
+    def bolusSource(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+
+    @property
+    def bolusNumber(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)#return this.eventData[0x0C];
+
+    @property
+    def presetBolusNumber(self):
+        # See NGPUtil.NGPConstants.BOLUS_PRESET_NAME
+        return BinaryDataDecoder.readByte(self.eventData, 0x0D)#return this.eventData[0x0D];
+
+class NormalBolusProgrammedEvent(BolusProgrammedEvent):
+    def __init__(self, eventData):
+        BolusProgrammedEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Prog:{1}, Active:{2}, Wizard: {3}'.format(BolusProgrammedEvent.__shortstr__(self), 
+                                                              self.programmedAmount, 
+                                                              self.activeInsulin, 
+                                                              self.bolusWizardEvent)
+
+    @property
+    def programmedAmount(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x0E) / 10000.0 #return this.eventData.readUInt32BE(0x12) / 10000.0;
+
+    @property
+    def activeInsulin(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x12) / 10000.0 #return this.eventData.readUInt32BE(0x16) / 10000.0;
+
+    def postProcess(self, histryEvents):
+        matches = [x for x in histryEvents 
+                   if isinstance(x, BolusWizardEstimateEvent) 
+                   and x.timestamp < self.timestamp
+                   and self.timestamp - x.timestamp < timedelta(minutes = 5)
+                   and x.finalEstimate == self.programmedAmount]
+        if len(matches) == 1:
+            self.bolusWizardEvent = matches[0]
+            self.bolusWizardEvent.programmed = True
+
 
 class SensorGlucoseReadingsEvent(NGPHistoryEvent):
     def __init__(self, eventData):
@@ -454,7 +520,7 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
     @property
     def predictedSg(self):
         return BinaryDataDecoder.readUInt16BE(self.eventData, 0x0D)#return this.eventData.readUInt16BE(0x0D);
-
+    
     def allNestedEvents(self):
         pos = 0x0F
         #if self.numberOfReadings > 1:
@@ -576,6 +642,7 @@ class SensorGlucoseReading(NGPHistoryEvent):
 class BolusWizardEstimateEvent(NGPHistoryEvent):
     def __init__(self, eventData):
         NGPHistoryEvent.__init__(self, eventData)
+        self.programmed = False
         
     def __str__(self):
         return ("{0} BG Input:{1}, "
@@ -583,9 +650,12 @@ class BolusWizardEstimateEvent(NGPHistoryEvent):
                 "Carb ratio: {4}, "
                 "Food est.:{3}, "
                 "Correction est.:{5}, "
+                "Active insulin:{10}, "
+                "Active insulin corr.:{11}, "
                 "Wizard est.: {6}, "
                 "User modif.: {7}, "
                 "Final est.: {8}, "
+                "Programmed: {12}, "
                 ).format(NGPHistoryEvent.__shortstr__(self), 
                                                     self.bgInput, 
                                                     self.carbInput,
@@ -594,7 +664,11 @@ class BolusWizardEstimateEvent(NGPHistoryEvent):
                                                     self.correctionEstimate,
                                                     self.bolusWizardEstimate,
                                                     self.estimateModifiedByUser,
-                                                    self.finalEstimate)
+                                                    self.finalEstimate,
+                                                    map(hex,map(ord, self.eventData[0x0B:])),
+                                                    self.activeInsulin,
+                                                    self.activeInsulinCorrection,
+                                                    self.programmed)
     
     @property
     def bgUnits(self):
@@ -654,11 +728,11 @@ class BolusWizardEstimateEvent(NGPHistoryEvent):
                 BinaryDataDecoder.readByte(self.eventData, 0x1E)) / 10000.0;
 
     @property
-    def iob(self):
+    def activeInsulin(self):
         return BinaryDataDecoder.readUInt32BE(self.eventData, 0x23) / 10000.0
 
     @property
-    def iobAdjustment(self):
+    def activeInsulinCorrection(self):
         return BinaryDataDecoder.readUInt32BE(self.eventData, 0x27) / 10000.0
 
     @property
