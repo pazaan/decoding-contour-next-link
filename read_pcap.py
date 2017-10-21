@@ -97,6 +97,10 @@ class BayerBinaryMessage( object ):
             return MedtronicMessage( stream, pumpSession )
         elif( messageType == 0x14 and messageDirection == BayerBinaryMessage.IN ):
             return ReadInfoResponse( stream )
+        elif( messageType == 0x16 and messageDirection == BayerBinaryMessage.OUT ):
+            return BayerBinaryMessage( stream )
+        elif( messageType == 0x86 and messageDirection == BayerBinaryMessage.IN ):
+            return BayerBinaryMessage( stream )
         elif( messageType == 0x12 ):
             stream.bytepos = 0x21
             medtronicSendType = stream.read( 'uint:8' )
@@ -492,7 +496,7 @@ class ReceiveMessage( MedtronicMessage ):
             assert self.delimiter2 == MedtronicMessage.DELIMITER
 
     def __str__( self ):
-        if( self.commandResponseCode == 1536 ):
+        if( self.commandResponseCode == 1536 and self.pumpIdentifier == MedtronicMessage.PUMP_IDENTIFIER):
             return "%s\nseqNo: %d, Stick serial: %d, Pump serial: %d\nDecrypted Payload: '%s'" % ( MedtronicMessage.__str__(self), self.sequenceNumber, self.stickSerial, self.pumpSerial , self.decrypt( self.requestBody ).encode('hex'))
         else:
             return "Haven't decoded this one yet"
@@ -507,10 +511,12 @@ if __name__ == '__main__':
 
     messageBuffer = BitStream()
 
-    i = 0
+    i = 1
+    j = 0
     pumpSession = MedtronicSession( args.encyption_key )
 
     for packet in cap:
+        j+=1
         # Make sure the data is coming from one of the USB endpoints we care about.
         # Skip anything else
         usbEndpoint = int( packet.usb.endpoint_number, 16 )
@@ -535,6 +541,7 @@ if __name__ == '__main__':
         # Clear the messageBuffer if we have a full message
         # TODO - we need to be able to figure out if all 60 bytes are conusumed, but it's the end of the message
         if( usbHeader[1] < USB_PACKET_SIZE ):
+            print >> sys.stderr, j
             print >> sys.stderr, 'Message %s' % ( 'OUT' if usbEndpoint == OUTGOING_ENDPOINT else 'IN' )
             print >> sys.stderr, 'Hex: %s' % ( messageBuffer.hex )
             # TODO - make a bayerMessage to also handle standard command sequences and ASTM messages
