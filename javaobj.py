@@ -9,19 +9,19 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-   
+
 """
-Provides functions for reading (writing is WIP currently) of Java 
+Provides functions for reading (writing is WIP currently) of Java
 objects serialized by ObjectOutputStream. This form of object
 representation is a standard data interchange format in Java world.
 
-javaobj module exposes an API familiar to users of the standard modules 
+javaobj module exposes an API familiar to users of the standard modules
 such as marshal, pickle and json.
 
 See: http://download.oracle.com/javase/6/docs/platform/serialization/spec/protocol.html
 """
 
-import StringIO
+import io
 import struct
 
 try:
@@ -68,7 +68,7 @@ def loads(string, *args):
     Deserializes Java objects and primitive data serialized by ObjectOutputStream
     from a string.
     """
-    f = StringIO.StringIO(string)
+    f = io.StringIO(string)
     marshaller = JavaObjectUnmarshaller(f)
     for t in args:
         marshaller.add_transformer(t)
@@ -610,7 +610,7 @@ class JavaObjectMarshaller(JavaObjectConstants):
     def dump(self, obj):
 
         self.object_obj = obj
-        self.object_stream = StringIO.StringIO()
+        self.object_stream = io.StringIO()
         self._writeStreamHeader()
         self.writeObject(obj)
         return self.object_stream.getvalue()
