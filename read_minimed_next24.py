@@ -1318,7 +1318,3 @@ def pumpDownload(mt):
 
 if __name__ == '__main__':
     downloadPumpSession(pumpDownload)
-    
-        
-        
-        
