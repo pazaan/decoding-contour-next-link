@@ -133,7 +133,7 @@ if __name__ == '__main__':
                 mt.openDevice()
                 mt.getDeviceInfo()
 
-                print mt.deviceSerial
+                print (mt.deviceSerial)
                 if mt.deviceSerial == None:
                     raise Exception()
             except Exception:
