@@ -24,9 +24,9 @@ PassthroughCommands:
 0x17 = SEND_LINK_KEY
 
 Medtronic Messages:
-00FE = ACK End Multipacket Command
+00FE(FF01) = ACK End Multipacket Command
 00FE = ACK Set Link Key Command
-00FE = ACK Start Multipacket Command
+00FE(FF00) = ACK Start Multipacket Command
 0112 = Read Pump Status Request
 0114 = Read Preset Boluses Request
 0115 = Read Preset Temp Basals Request
@@ -67,7 +67,7 @@ FF00 = Initiate Multipacket Transfer Command
 FF01 = Multipacket Segment Transmission Command
 
 Read Basal Pattern Response:
-0e 0123 01 05 00000dac00 00000fa006 0000138810 0000109a18 00000ea628 9fa4
+0e 0123 01 05 00000dac 00 00000fa0 06 00001388 10 0000109a 18 00000ea6 28 9fa4
 12:00 - 03:00 - 0.375
 03:00 - 08:00 - 0.425
 08:00 - 12:00 - 0.5
@@ -147,10 +147,10 @@ D8 = VCNTR -0.4 (8 bit BE signed / 100)
 3294022CCC02200000000000000032340001009019C511000000
 
 Status Response
-Byte 0x03 - Status. Bit 1 = Suspended, Bit 2 = Bolusing, Bit 5 = Active (0 means inactive, rewound pump, etc), Bit 6 = Temp Basal active, Bit 7 = CGM active?
+Byte 0x03 - Status. Bit 1 = Suspended, Bit 2 = Bolusing, Bit 5 = Active (0 means inactive, rewound pump, etc), Bit 6 = Temp Basal active, Bit 7 = CGM active
 Byte 0x1a = Active basal pattern
 Bytes 0x1b - 0x1e = Current basal normal rate BE int / 10000
-Bytes 0x21 + 0x22 = Current temp basal rate (U/hr) BE unsigned short???
+Bytes 0x1f - 0x22 = Current temp basal rate (U/hr) BE unsigned int / 10000
 Byte 0x23 = Current temp basal percentage
 Bytes 0x24 + 0x25 = Temp basal minutes remaining (BE unsigned short)
 Bytes 0x26 - 0x29 = Total basal delivered today. BE int / 10000
@@ -158,7 +158,7 @@ Byte 0x2a = Battery % (as an unsigned byte)
 Bytes 0x2b - 0x2e = Insulin Units left in pump BE unsigned int / 10000
 Bytes 0x2f = Hours of insulin left (25h means "more than 24 hours")
 Bytes 0x30 = Minutes of insulin left
-Bytes 0x33 + 0x34 = Active Insulin BE unsigned short / 10000
+Bytes 0x31 - 0x34 = Active Insulin BE int / 10000
 Byte 0x35 & 0x36 (as a BE unsigned short) is the current sensor SGV in mg/dL
 Bytes 0x37 - 0x3e is the timestamp of the last sensor BGL
 Byte 0x3f - Predictive suspend (see below)
@@ -179,3 +179,146 @@ No arrows = 0x60 = 0110 0000
 Predictive suspend = byte 0x3f
 Suspend before low = 0x80, also seen 0x88 (go with non-zero for now, and log?)
 Either way, the suspend bit in 0x03 is set
+
+Multi-packet comms:
+Decrypted ComD Message: 1BFF00000036D0005E001A0096FD8B
+Breakdown: 1B FF00 000036D0 005E 001A 0096 FD8B
+1B - ComD sequence number
+FF00 - ComD Message Type (Initiate Multipacket Transfer Command)
+000036D0 - Total number of bytes in transfer BE unsigned int (14032 here)
+005E - Number of bytes per packet BE unsigned short (94 here)
+001A - Number of bytes in last packet BE unsigned short (26 here)
+0096 - Number of multi-packet messages to read BE unsigned short (150 here)
+FD8B - CCITT checksum of message
+
+----------------------------------------------------------
+
+Status Message Payload
+
+           ?0 ?1 ?2 ?3 ?4 ?5 ?6 ?7 ?8 ?9 ?A ?B ?C ?D ?E ?F
+0x00000000 XX XX XX QQ nb NB NB NB -- -- -- -- NM NM NR nr
+0x00000010 kb KB KB KB KT KT KT KT KR kr BP BR BR BR BR tb
+0x00000020 TB TB TB TR TM TM bu BU BU BU PP rr RR RR RR RH
+0x00000030 RM ii II II II SV SV ST ST ST ST SO SO SO SO LS
+0x00000040 SD SS SU SC SC SB SX SX BW BG BG WW WW WT WT WT
+0x00000050 WT WO WO WO WO -- -- -- sm sm SM SM sn sn SN SN
+
+XX = header
+
+QQ = pump status
+BP = basal pattern
+BR = basal rate (div 10000)
+TB = temp basal (div 10000)
+TR = temp basal percent
+TM = temp minutes remaining
+BU = basal units delivered today (div 10000)
+PP = battery
+RR = reservoir (div 10000)
+RH = reservoir hours remaining
+RM = reservoir mins remaining
+II = active insulin (div 10000)
+SV = sgv
+ST = sgv time rtc
+SO = sgv time offset
+LS = low suspend active
+SD = sgv trend
+BW = bolus wizard
+BG = bgv
+WW = alert
+WT = alert time rtc
+WO = alert time offset
+
+NB = now bolusing amount delivered (div 10000)
+NM = now bolusing minutes remaining
+NR = now bolusing reference
+
+KB = last bolus amount (div 10000)
+KT = last bolus time
+KR = last bolus reference
+
+SS = sensor status
+SU = sensor control?
+SC = sensor calibration minutes remaining
+SB = sensor battery
+SX = sensor rate of change (div 100)
+
+SM = sensor mode active (incs each on and each off, if bit 0 is set then on)
+SN = sensor mode active (incs each on and each off, if bit 0 is set then on)
+
+-- = unknown use or zero while monitoring
+
+lower case used for unconfirmed but assumed related values ie: rr RR RR RR (is it 24bit or 32bit) 
+
+----------------------------------------------------------
+
+
+[QQ] 8bit  = pump status
+
+00000001 = suspended
+00000010 = now bolusing normal
+00000100 = now bolusing square
+00001000 = now bolusing dual
+00010000 = insulin delivery active
+00100000 = temp basal active
+01000000 = cgm active
+10000000 = ?
+
+----------------------------------------------------------
+
+Last bolus delivered:
+
+[KB] 32bit = last bolus amount (/10000 for decimal value)
+[KT] 32bit = last bolus time
+[KR] 8bit  = bolus reference (inc each bolus)
+[kr] 8bit  = unconfirmed part of reference? seen as zero while monitoring
+
+Now bolusing:
+
+[NB] 32bit = bolusing amount delivered (normal/square/dual check pump status for type) (/10000 for decimal value)
+[NM] 16bit = bolusing minutes remaining (user set limit = 480 minutes / 8 hours)
+[NR] 8bit  = bolusing = bolus reference, [KR] will contain this ref when complete normal/square
+[nr] 8bit  = unconfirmed part of reference? seen as zero while monitoring
+
+<normal> when bolusing finished updates: [KB] with full bolus amount [KT] time normal bolusing started 
+<square> when square bolusing finished updates: [KB] with full bolus amount [KT] time square bolusing started
+<dual>   when normal bolusing finished updates: [KB] with normal bolus amount [KT] time normal bolusing started [KR] = [NR]
+         when square bolusing finished updates: [KB] with square bolus amount [KT] time square bolusing started [KR] = [NR] (same ref used for both parts)
+
+if an additional normal bolus is done while a square is being delivered [KB] [KT] [KR] will show this bolus and change again to square when that finishes. 
+
+----------------------------------------------------------
+
+Sensor/Transmitter:
+
+[SS] 8bit  = sensor status
+
+00000001 = calibrating
+00000010 = calibration complete
+00000100 = sgv unavailable (if sgv is expected and flag set then there will be a pump graph gap)  
+00001000 = ?
+00010000 = ?
+00100000 = ?
+01000000 = ?
+10000000 = ?
+
+[SU] 8bit  = ?
+[SC] 16bit = time remaining to next calibration in minutes (720 mins max count, FFFF = unknown)
+[SB] 8bit  = ? unconfirmed as transmitter battery (0x3F 100% ... 0x27 47% . 0x23 20%)
+[SX] 16bit = isig rate of change? relates to use for trend arrows? (/100 for decimal value) (RATE_OF_CHANGE value in Carelink)
+
+sensor warm-up noted:
+[SS] = 04
+[SU] = 02 / 01 / 00 changes during warm-up
+[SC] = next cal in minutes ie 120 mins for warm-up
+[SB] = 3F
+[SX] = 0
+[SV] = 0301
+
+[sm] 16bit = unconfirmed part of [SM]? seen as zero while monitoring
+[SM] 16bit = sensor mode active (incs each on and each off, if bit 0 is set then on)
+[sn] 16bit = unconfirmed part of [SN]? seen as zero while monitoring
+[SN] 16bit = sensor mode active (incs each on and each off, if bit 0 is set then on)
+
+[SM] and [SN] always mirror each other
+
+----------------------------------------------------------
