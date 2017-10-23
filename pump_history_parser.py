@@ -219,6 +219,9 @@ class NGPHistoryEvent:
     
     def __str__(self):
         return '{0} {1:x} {2}'.format(self.__class__.__name__, self.eventType, self.timestamp)
+
+    def __repr__(self):
+        return str(self)
     
     def allNestedEvents(self):
         yield self.eventInstance()
