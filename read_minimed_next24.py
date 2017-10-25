@@ -19,8 +19,7 @@ import hashlib
 import re
 import pickle # needed for local history export
 import lzo # pip install python-lzo
-from pump_history_parser import NGPHistoryEvent
-from pump_history_parser import BloodGlucoseReadingEvent
+from pump_history_parser import NGPHistoryEvent, BloodGlucoseReadingEvent
 from helpers import DateTimeHelper
 
 logger = logging.getLogger(__name__)
