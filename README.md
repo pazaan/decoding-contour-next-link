@@ -13,40 +13,47 @@ $ sudo -H pip install --upgrade setuptools --user python
 ```
 * Install the dependencies:  
 ```
-$ sudo -H pip install requests hidapi astm transitions PyCrypto crc16 python-dateutil
+$ sudo -H pip install cython
+$ sudo -H pip install hidapi
+$ sudo -H pip install requests astm PyCrypto crc16 python-dateutil
+$ sudo -H pip install python-lzo
 ```
 * Plug in your Contour NextLink 2.4 USB stick
-* Run ```get_hmac_and_key.py``` to get your HMAC and AES key for your USB stick serial number. This script takes one argument, which is your CareLink username. The script will also ask for your password - this is not echoed out or stored at all.
-```
-$ python get_hmac_and_key.py my_carelink_username  
-Enter the password for the CareLink user my_carelink_username:
-HMAC for serial 1055866: e28fe4e5cf3c1eb6d6a2ec5a093093d4f397237dc60b3f2c1ef64f31e32077c4
-KEY for serial 1055866: 57833334130906a587b7a0437bc28a69
-```
 
-Now whenever you run `read_minimed_next24.py`, the script will get the config from the config database and communicate with your pump.
+Now you can try the script by calling the module from the parent directory
 ```
-$ python read_minimed_next24.py
-# Opening device
-Manufacturer: Bayer HealthCare LLC
-Product: Contour Link USB Device
-Serial No: 0000000001055866
-# Request Device Info
-# Read Device Info
-6213-1055866
-# Request Open Connection
-# Request Read Info
-# Negotiate pump comms channel
-Negotiating on channel 20
-Negotiating on channel 20
-Negotiating on channel 17
-Negotiating on channel 14
-# Begin Extended High Speed Mode Session
-# Get Pump Time
-Pump time is: Sun, 01 May 2016 16:49:59 +0000
-# Get Pump Status
-Active Insulin: 0.450U
-Sensor BGL: 340 mg/dL (18.9 mmol/L) at Sun, 01 May 2016 16:47:21 +0000
+$ python -m decoding-contour-next-link.read_minimed_next24
+Active Insulin: 0.000U
+Sensor BGL: 0 mg/dL (0.0 mmol/L) at Thu Jan  1 01:00:00 1970
+BGL trend: 3 arrows down
+Current basal rate: 0.600U
+Temp basal rate: 0.000U
+Temp basal percentage: 0%
+Units remaining: 164.000U
+Battery remaining: 50%
+Getting Pump history info
+ Pump Start: 2017-10-24 23:59:59.999972+02:00
+ Pump End: 2017-10-26 22:13:21.999983+02:00
+ Pump Size: 6144
+Getting Pump history
+# All Pump events:
+(' Pump: ', BolusWizardEstimateEvent 3d 2017-10-24 19:58:44.999969+02:00 BG Input:0, Carbs:3.0, Carb ratio: 0.5, Food est.:1.5, Correction est.:0.0, Wizard est.: 1.5, User modif.: False, Final est.: 1.5, )
+
+[...]
+
+# End Pump events
+Getting sensor history info
+ Sensor Start: 2017-10-24 23:59:59.999975+02:00
+ Sensor End: 2017-10-26 22:13:22.999987+02:00
+ Sensor Size: 2048
+Getting Sensor history
+# All Sensor events:
+(' Sensor', NGPHistoryEvent 8 2008-12-31 23:00:10.999966+01:00)
+(' Sensor', NGPHistoryEvent 7 2017-08-03 17:19:22.999980+02:00)
+
+[...]
+
+# End Sensor events
 ```
 
 ## Known Issues

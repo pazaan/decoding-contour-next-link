@@ -1,4 +1,4 @@
-from helpers import DateTimeHelper, BinaryDataDecoder, NumberHelper
+from .helpers import DateTimeHelper, BinaryDataDecoder, NumberHelper
 import struct
 from datetime import timedelta
 
