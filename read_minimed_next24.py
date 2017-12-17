@@ -2,7 +2,7 @@
 
 import logging
 # logging.basicConfig has to be before astm import, otherwise logs don't appear
-logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s] %(message)s', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s %(levelname)s [%(name)s] %(message)s', level=logging.WARNING)
 # a nasty workaround on missing hidapi.dll on my windows (allows testing from saved files, but not download of pump)
 try:
     import hid # pip install hidapi - Platform independant
@@ -19,9 +19,8 @@ import hashlib
 import re
 import pickle # needed for local history export
 import lzo # pip install python-lzo
-from pump_history_parser import NGPHistoryEvent
-from pump_history_parser import BloodGlucoseReadingEvent
-from helpers import DateTimeHelper
+from .pump_history_parser import NGPHistoryEvent, BloodGlucoseReadingEvent
+from .helpers import DateTimeHelper
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,9 @@ ascii= {
     'NAK' : 0x15,
     'STX' : 0x02
 }
+
+def ord_hack(char_or_byte):
+    return char_or_byte if isinstance(char_or_byte, int) else ord(char_or_byte)
 
 class COM_D_COMMAND:
     HIGH_SPEED_MODE_COMMAND = 0x0412
@@ -159,8 +161,8 @@ class MedtronicSession( object ):
 
     @property
     def HMAC( self ):
-        serial = str( re.sub( r"\d+-", "", self.stickSerial ) )
-        paddingKey = "A4BD6CED9A42602564F413123"
+        serial = bytearray( re.sub( r"\d+-", "", self.stickSerial ), 'ascii' ) 
+        paddingKey = b"A4BD6CED9A42602564F413123"
         digest = hashlib.sha256(serial + paddingKey).hexdigest()
         return "".join(reversed([digest[i:i+2] for i in range(0, len(digest), 2)]))
 
@@ -214,7 +216,10 @@ class MedtronicSession( object ):
 
     @property
     def IV( self ):
-        return binascii.unhexlify( "{0:02x}{1}".format( self.radioChannel, binascii.hexlify( self.KEY )[2:] ) )
+        tmp = bytearray()
+        tmp.append(self.radioChannel)
+        tmp += self.KEY[1:]        
+        return bytes(tmp)
 
 class MedtronicMessage( object ):
     ENVELOPE_SIZE = 2
@@ -232,12 +237,12 @@ class MedtronicMessage( object ):
 
     @classmethod
     def calculateCcitt( self, data ):
-        crc = crc16.crc16xmodem( data, 0xffff )
+        crc = crc16.crc16xmodem( bytes(data), 0xffff )
         return crc & 0xffff
 
     def pad( self, x, n = 16 ):
         p = n - ( len( x ) % n )
-        return x + chr(p) * p
+        return x + bytes(bytearray(p))#chr(p) * p
 
     # Encrpytion equivalent to Java's AES/CFB/NoPadding mode
     def encrypt( self, clear ):
@@ -274,11 +279,11 @@ class MedtronicMessage( object ):
     def decode( cls, message, session ):
         response = cls()
         response.session = session
-        response.envelope = str( message[0:2] )
-        response.payload = str( message[2:-2] )
+        response.envelope = message[0:2]
+        response.payload = message[2:-2]
         response.originalMessage = message;
 
-        checksum = struct.unpack( '<H', str( message[-2:] ) )[0]
+        checksum = struct.unpack( '<H', message[-2:] )[0]
         calcChecksum = MedtronicMessage.calculateCcitt( response.envelope + response.payload )
         if( checksum != calcChecksum ):
             raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
@@ -292,7 +297,7 @@ class ChannelNegotiateMessage( MedtronicMessage ):
         # The minimedSequenceNumber is always sent as 1 for this message,
         # even though the sequence should keep incrementing as normal
         payload = struct.pack( '<BB8s', 1, session.radioChannel,
-            '\x00\x00\x00\x07\x07\x00\x00\x02' )
+            b'\x00\x00\x00\x07\x07\x00\x00\x02' )
         payload += struct.pack( '<Q', session.linkMAC )
         payload += struct.pack( '<Q', session.pumpMAC )
 
@@ -315,13 +320,13 @@ class MedtronicSendMessage( MedtronicMessage ):
         encryptedPayload += struct.pack( '>H', crc & 0xffff )
         # logger.debug("### PAYLOAD")
         # logger.debug(binascii.hexlify( encryptedPayload ))
-
+        
         mmPayload = struct.pack( '<QBBB',
             self.session.pumpMAC,
             self.session.minimedSequenceNumber,
             0x11, # Mode flags
             len( encryptedPayload )
-        )
+        )        
         mmPayload += self.encrypt( encryptedPayload )
 
         self.setPayload( mmPayload )
@@ -333,8 +338,8 @@ class MedtronicReceiveMessage( MedtronicMessage ):
         response = MedtronicMessage.decode( message, session )
        
         # TODO - check validity of the envelope
-        response.responseEnvelope = str( response.payload[0:22] )
-        decryptedResponsePayload = response.decrypt( str( response.payload[22:] ) )
+        response.responseEnvelope = response.payload[0:22] 
+        decryptedResponsePayload = response.decrypt( bytes(response.payload[22:]) )
 
         response.responsePayload = decryptedResponsePayload[0:-2]
 
@@ -342,7 +347,7 @@ class MedtronicReceiveMessage( MedtronicMessage ):
         # logger.debug(binascii.hexlify( response.responsePayload ))
 
         if len( response.responsePayload ) > 2:
-            checksum = struct.unpack( '>H', str( decryptedResponsePayload[-2:] ) )[0]
+            checksum = struct.unpack( '>H', decryptedResponsePayload[-2:])[0]
             calcChecksum = MedtronicMessage.calculateCcitt( response.responsePayload )
             if( checksum != calcChecksum ):
                 raise ChecksumException( 'Expected to get {0}. Got {1}'.format( calcChecksum, checksum ) )
@@ -396,16 +401,16 @@ class ReadLinkKeyResponseMessage( object ):
         return struct.unpack( '>55s', self.responsePayload[0:55] )[0]
 
     def linkKey( self, serialNumber ):
-        key = ""
-        pos = ord( serialNumber[-1:] ) & 7
-
-        for _ in range(16):
-            if ( ord( self.packedLinkKey[pos + 1] ) & 1) == 1:
-                key += chr( ~ord( self.packedLinkKey[pos] ) & 0xff )
+        key = bytearray(b"")
+        pos = ord_hack( serialNumber[-1:] ) & 7
+        
+        for it in range(16):
+            if ( ord_hack( self.packedLinkKey[pos + 1] ) & 1) == 1:
+                key.append(~ord_hack( self.packedLinkKey[pos] ) & 0xff)
             else:
-                key += self.packedLinkKey[pos]
+                key.append(self.packedLinkKey[pos])
 
-            if (( ord( self.packedLinkKey[pos + 1] ) >> 1 ) & 1 ) == 0:
+            if (( ord_hack( self.packedLinkKey[pos + 1] ) >> 1 ) & 1 ) == 0:
                 pos += 3
             else:
                 pos += 2
@@ -425,7 +430,7 @@ class PumpTimeResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def timeSet( self ):
-        if struct.unpack( 'B', self.responsePayload[3:3] )[0] == 0:
+        if self.responsePayload[3] == 0:
             return False
         else:
             return True
@@ -582,7 +587,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def recentBolusWizard( self ):
-        if struct.unpack( 'B', self.responsePayload[72:72] )[0] == 0:
+        if self.responsePayload[72] == 0:
             return False
         else:
             return True
@@ -678,12 +683,16 @@ class BayerBinaryMessage( object ):
         self.payload = payload
         self.session = session
         if messageType and self.session:
-            self.envelope = struct.pack( '<BB6s10sBI5sI', 0x51, 3, '000000', '\x00' * 10,
-                messageType, self.session.bayerSequenceNumber, '\x00' * 5, len( self.payload ) if self.payload else 0 )
+            self.envelope = struct.pack( '<BB6s10sBI5sI', 0x51, 3, b'000000', b'\x00' * 10,
+                messageType, self.session.bayerSequenceNumber, b'\x00' * 5, 
+                len( self.payload ) if self.payload else 0 )
             self.envelope += struct.pack( 'B', self.makeMessageCrc() )
 
     def makeMessageCrc( self ):
-        checksum = sum( bytearray( self.envelope )[0:32] )
+        checksum = 0
+        for x in self.envelope[0:32]:
+            checksum += ord_hack(x)
+        #checksum = sum( bytearray(self.envelope[0:32], 'utf-8') )
 
         if self.payload:
             checksum += sum( bytearray( self.payload ) )
@@ -701,8 +710,8 @@ class BayerBinaryMessage( object ):
     @classmethod
     def decode( cls, message ):
         response = cls()
-        response.envelope = str( message[0:33] )
-        response.payload = str( message[33:] )
+        response.envelope = message[0:33]
+        response.payload = message[33:] 
 
         checksum = message[32]
         calcChecksum = response.makeMessageCrc()
@@ -714,7 +723,7 @@ class BayerBinaryMessage( object ):
     
     @property
     def linkDeviceOperation( self ):
-        return struct.unpack( '>B', self.envelope[18] )[0]
+        return ord_hack(self.envelope[18])
 
     # HACK: This is just a debug try, session param shall not be there    
     def checkLinkDeviceOperation( self, expectedValue, session = None ):
@@ -731,7 +740,7 @@ class Medtronic600SeriesDriver( object ):
     USB_BLOCKSIZE = 64
     USB_VID = 0x1a79
     USB_PID = 0x6210
-    MAGIC_HEADER = 'ABC'
+    MAGIC_HEADER = b'ABC'
 
     CHANNELS = [ 0x14, 0x11, 0x0e, 0x17, 0x1a ] # In the order that the CareLink applet requests them
 
@@ -762,7 +771,7 @@ class Medtronic600SeriesDriver( object ):
         while True:
             data = self.device.read( self.USB_BLOCKSIZE, timeout_ms = 10000 )
             if data:
-                if( str( bytearray( data[0:3] ) ) != self.MAGIC_HEADER ):
+                if( bytearray( data[0:3] ) != self.MAGIC_HEADER ):
                     logger.error('Recieved invalid USB packet')
                     raise RuntimeError( 'Recieved invalid USB packet')
                 payload.extend( data[4:data[3] + 4] )
@@ -801,7 +810,7 @@ class Medtronic600SeriesDriver( object ):
                 logger.error('readDeviceInfo: Expected to get an ASTM message, but got {0} instead'.format( binascii.hexlify( msg ) ))
                 raise RuntimeError( 'Expected to get an ASTM message, but got {0} instead'.format( binascii.hexlify( msg ) ) )
 
-            self.deviceInfo = astm.codec.decode( str( msg ) )
+            self.deviceInfo = astm.codec.decode( bytes( msg ) )
             self.session.stickSerial = self.deviceSerial
             self.checkControlMessage( ascii['ENQ'] )
 
@@ -833,21 +842,21 @@ class Medtronic600SeriesDriver( object ):
 
     def enterPassthroughMode( self ):
         logger.info("# enterPassthroughMode")
-        self.sendMessage( struct.pack( '>2s', 'W|' ) )
+        self.sendMessage( struct.pack( '>2s', b'W|' ) )
         self.checkControlMessage( ascii['ACK'] )
-        self.sendMessage( struct.pack( '>2s', 'Q|' ) )
+        self.sendMessage( struct.pack( '>2s', b'Q|' ) )
         self.checkControlMessage( ascii['ACK'] )
-        self.sendMessage( struct.pack( '>2s', '1|' ) )
+        self.sendMessage( struct.pack( '>2s', b'1|' ) )
         self.checkControlMessage( ascii['ACK'] )
 
     def exitPassthroughMode( self ):
         logger.info("# exitPassthroughMode")
         try:
-            self.sendMessage( struct.pack( '>2s', 'W|' ) )
+            self.sendMessage( struct.pack( '>2s', b'W|' ) )
             self.checkControlMessage( ascii['ACK'] )
-            self.sendMessage( struct.pack( '>2s', 'Q|' ) )
+            self.sendMessage( struct.pack( '>2s', b'Q|' ) )
             self.checkControlMessage( ascii['ACK'] )
-            self.sendMessage( struct.pack( '>2s', '0|' ) )
+            self.sendMessage( struct.pack( '>2s', b'0|' ) )
             self.checkControlMessage( ascii['ACK'] )
         except Exception:
             logger.warning("Unexpected error by exitPassthroughMode, ignoring", exc_info = True);
@@ -885,8 +894,9 @@ class Medtronic600SeriesDriver( object ):
         self.sendMessage( bayerMessage.encode() )
         response = BayerBinaryMessage.decode( self.readMessage() ) # The response is a 0x14 as well
         keyRequest = ReadLinkKeyResponseMessage.decode( response.payload )
-        self.session.KEY = keyRequest.linkKey( self.session.stickSerial )
+        self.session.KEY = bytes(keyRequest.linkKey( self.session.stickSerial ))
         logger.debug("LINK KEY: {0}".format(binascii.hexlify(self.session.KEY)))
+
 
     def negotiateChannel( self ):
         logger.info("# Negotiate pump comms channel")
@@ -903,7 +913,7 @@ class Medtronic600SeriesDriver( object ):
             response = BayerBinaryMessage.decode( self.readMessage() ) # Read the 0x80
             if len( response.payload ) > 13:
                 # Check that the channel ID matches
-                responseChannel = struct.unpack( 'B', response.payload[43] )[0]
+                responseChannel = response.payload[43]
                 if self.session.radioChannel == responseChannel:
                     break
                 else:
@@ -1103,7 +1113,7 @@ class Medtronic600SeriesDriver( object ):
                 raise InvalidMessageError('Block payload size is not a multiple of 2048')
 
 
-            for i in range (0, len(blockPayload) / BLOCK_SIZE):
+            for i in range (0, len(blockPayload) // BLOCK_SIZE):
                 blockSize = struct.unpack('>H', blockPayload[(i + 1) * BLOCK_SIZE - 4 : (i + 1) * BLOCK_SIZE - 2])[0] #blockPayload.readUInt16BE(((i + 1) * ReadHistoryCommand.BLOCK_SIZE) - 4)
                 blockChecksum = struct.unpack('>H', blockPayload[(i + 1) * BLOCK_SIZE - 2 : (i + 1) * BLOCK_SIZE])[0] #blockPayload.readUInt16BE(((i + 1) * ReadHistoryCommand.BLOCK_SIZE) - 2)
 
@@ -1253,23 +1263,23 @@ def pumpDownload(mt):
     status = mt.getPumpStatus()
     print (binascii.hexlify( status.responsePayload ))
     print ("Active Insulin: {0:.3f}U".format( status.activeInsulin ))
-    print ("Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}").format( status.sensorBGL,
+    print ("Sensor BGL: {0} mg/dL ({1:.1f} mmol/L) at {2}".format( status.sensorBGL,
              status.sensorBGL / 18.016,
-             status.sensorBGLTimestamp.strftime( "%c" ) )
+             status.sensorBGLTimestamp.strftime( "%c" ) ))
     print ("BGL trend: {0}".format( status.trendArrow ))
-    print ("Current basal rate: {0:.3f}U").format( status.currentBasalRate )
-    print ("Temp basal rate: {0:.3f}U").format( status.tempBasalRate )
-    print ("Temp basal percentage: {0}%").format( status.tempBasalPercentage )
-    print ("Units remaining: {0:.3f}U").format( status.insulinUnitsRemaining )
-    print ("Battery remaining: {0}%").format( status.batteryLevelPercentage )
+    print ("Current basal rate: {0:.3f}U".format( status.currentBasalRate ))
+    print ("Temp basal rate: {0:.3f}U".format( status.tempBasalRate ))
+    print ("Temp basal percentage: {0}%".format( status.tempBasalPercentage ))
+    print ("Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining ))
+    print ("Battery remaining: {0}%".format( status.batteryLevelPercentage ))
     
     print ("Getting Pump history info")
     start_date = datetime.datetime.now() - datetime.timedelta(days=1)
     historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
     # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    print (" Pump Start: {0}").format(historyInfo.datetimeStart)
-    print (" Pump End: {0}").format(historyInfo.datetimeEnd);
-    print (" Pump Size: {0}").format(historyInfo.historySize);
+    print (" Pump Start: {0}".format(historyInfo.datetimeStart))
+    print (" Pump End: {0}".format(historyInfo.datetimeEnd));
+    print (" Pump Size: {0}".format(historyInfo.historySize));
     
     print ("Getting Pump history")
     history_pages = mt.getPumpHistory(historyInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
@@ -1287,9 +1297,9 @@ def pumpDownload(mt):
     print ("Getting sensor history info")
     sensHistoryInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
     # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    print (" Sensor Start: {0}").format(sensHistoryInfo.datetimeStart)
-    print (" Sensor End: {0}").format(sensHistoryInfo.datetimeEnd);
-    print (" Sensor Size: {0}").format(sensHistoryInfo.historySize);
+    print (" Sensor Start: {0}".format(sensHistoryInfo.datetimeStart))
+    print (" Sensor End: {0}".format(sensHistoryInfo.datetimeEnd));
+    print (" Sensor Size: {0}".format(sensHistoryInfo.historySize));
     
     print ("Getting Sensor history")
     sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)

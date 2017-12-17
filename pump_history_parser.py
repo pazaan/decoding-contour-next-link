@@ -459,8 +459,8 @@ class SensorGlucoseReading(NGPHistoryEvent):
                  noisyData = False,
                  discardData = False,
                  sensorError = False):
-        self.timestamp = timestamp
-        self.dynamicActionRequestor = dynamicActionRequestor
+        self._timestamp = timestamp
+        self._dynamicActionRequestor = dynamicActionRequestor
         self.sg = sg
         self.predictedSg = predictedSg
         self.isig = isig
@@ -487,8 +487,15 @@ class SensorGlucoseReading(NGPHistoryEvent):
 
     @property
     def source(self):
-        # No idea what "source" means.
-        return BinaryDataDecoder.readByte(self.eventData, 0x01)# self.eventData[0x01];
+        return self._dynamicActionRequestor
+
+    @property
+    def dynamicActionRequestor(self):
+        return self._dynamicActionRequestor
+
+    @property
+    def timestamp(self):
+        return self._timestamp
 
     @property
     def size(self):
