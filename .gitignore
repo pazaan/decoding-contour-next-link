@@ -1,5 +1,5 @@
 *.pyc
 read_minimed.db
-
 /.project
 /.pydevproject
+/.settings

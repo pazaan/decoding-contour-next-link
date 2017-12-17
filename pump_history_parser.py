@@ -425,20 +425,20 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
             #const sensorError = sensorStatus === 3;
             sensorError = sensorStatus == 3
             # TODO - handle all the error states where sg >= 769 (see ParseCGM.js)?
-
-
-            yield SensorGlucoseReading(timestamp = timestamp, 
-                                       dynamicActionRequestor = self.dynamicActionRequestor, 
-                                       sg = sg,
-                                       predictedSg = self.predictedSg,
-                                       noisyData = noisyData,
-                                       discardData = discardData,
-                                       sensorError = sensorError,
-                                       backfilledData = backfilledData,
-                                       settingsChanged = settingsChanged,
-                                       isig = isig,
-                                       rateOfChange = rateOfChange,
-                                       vctr = vctr)
+            
+            if sg > 0 and sg < 600:
+                yield SensorGlucoseReading(timestamp = timestamp, 
+                                           dynamicActionRequestor = self.dynamicActionRequestor, 
+                                           sg = sg,
+                                           predictedSg = self.predictedSg,
+                                           noisyData = noisyData,
+                                           discardData = discardData,
+                                           sensorError = sensorError,
+                                           backfilledData = backfilledData,
+                                           settingsChanged = settingsChanged,
+                                           isig = isig,
+                                           rateOfChange = rateOfChange,
+                                           vctr = vctr)
             pos += 9;
 
 
