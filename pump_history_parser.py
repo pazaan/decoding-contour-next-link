@@ -1,6 +1,9 @@
 from .helpers import DateTimeHelper, BinaryDataDecoder, NumberHelper
 import struct
+import logging
 from datetime import timedelta
+
+logger = logging.getLogger(__name__)
 
 class NGPConstants:
     class BG_UNITS:
@@ -394,9 +397,9 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
 
     def allNestedEvents(self):
         pos = 15
-        for i in range(0, self.numberOfReadings):
+        for i in range(self.numberOfReadings - 1, -1, -1):
             #const timestamp = new NGPUtil.NGPTimestamp(this.timestamp.rtc - (i * this.minutesBetweenReadings * 60), this.timestamp.offset);
-            timestamp = self.timestamp + timedelta(minutes = i * self.minutesBetweenReadings)
+            timestamp = self.timestamp - timedelta(minutes = i * self.minutesBetweenReadings)
             payloadDecoded = struct.unpack( '>BBHBhBB', self.eventData[pos:pos + 9] )
 
             #const sg = ((this.eventData[pos] & 3) << 8) | this.eventData[pos + 1];
@@ -425,20 +428,20 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
             #const sensorError = sensorStatus === 3;
             sensorError = sensorStatus == 3
             # TODO - handle all the error states where sg >= 769 (see ParseCGM.js)?
-
-
-            yield SensorGlucoseReading(timestamp = timestamp, 
-                                       dynamicActionRequestor = self.dynamicActionRequestor, 
-                                       sg = sg,
-                                       predictedSg = self.predictedSg,
-                                       noisyData = noisyData,
-                                       discardData = discardData,
-                                       sensorError = sensorError,
-                                       backfilledData = backfilledData,
-                                       settingsChanged = settingsChanged,
-                                       isig = isig,
-                                       rateOfChange = rateOfChange,
-                                       vctr = vctr)
+            
+            if sg > 0 and sg < 600:
+                yield SensorGlucoseReading(timestamp = timestamp, 
+                                           dynamicActionRequestor = self.dynamicActionRequestor, 
+                                           sg = sg,
+                                           predictedSg = self.predictedSg,
+                                           noisyData = noisyData,
+                                           discardData = discardData,
+                                           sensorError = sensorError,
+                                           backfilledData = backfilledData,
+                                           settingsChanged = settingsChanged,
+                                           isig = isig,
+                                           rateOfChange = rateOfChange,
+                                           vctr = vctr)
             pos += 9;
 
 
