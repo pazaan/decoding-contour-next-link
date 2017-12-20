@@ -396,11 +396,13 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
         return BinaryDataDecoder.readUInt16BE(self.eventData, 0x0D)#return this.eventData.readUInt16BE(0x0D);
 
     def allNestedEvents(self):
-        pos = 15
+        pos = 0x0F
+        #if self.numberOfReadings > 1:
+        #    logger.debug("MULTI_ITEM_HISTORY: {0} {1}".format(self.timestamp, self.numberOfReadings))
         for i in range(self.numberOfReadings - 1, -1, -1):
             #const timestamp = new NGPUtil.NGPTimestamp(this.timestamp.rtc - (i * this.minutesBetweenReadings * 60), this.timestamp.offset);
             timestamp = self.timestamp - timedelta(minutes = i * self.minutesBetweenReadings)
-            payloadDecoded = struct.unpack( '>BBHBhBB', self.eventData[pos:pos + 9] )
+            payloadDecoded = struct.unpack( '>BBHBhBB', self.eventData[pos + i * 9: pos + (i + 1)* 9] )
 
             #const sg = ((this.eventData[pos] & 3) << 8) | this.eventData[pos + 1];
             sg = (payloadDecoded[0] & 0x03) << 8 | payloadDecoded[1]            
@@ -429,6 +431,10 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
             sensorError = sensorStatus == 3
             # TODO - handle all the error states where sg >= 769 (see ParseCGM.js)?
             
+            #if self.numberOfReadings > 1:
+            #    logger.debug("MULTI_ITEM_HISTORY ITEM: {0} {1} {2}".format(timestamp, i, sg))
+
+            
             if sg > 0 and sg < 600:
                 yield SensorGlucoseReading(timestamp = timestamp, 
                                            dynamicActionRequestor = self.dynamicActionRequestor, 
@@ -442,7 +448,6 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
                                            isig = isig,
                                            rateOfChange = rateOfChange,
                                            vctr = vctr)
-            pos += 9;
 
 
 class SensorGlucoseReading(NGPHistoryEvent):
