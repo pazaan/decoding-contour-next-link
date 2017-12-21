@@ -84,6 +84,40 @@ class NGPConstants:
       'Snack',
     ]
 
+    class SUSPEND_REASON:
+        ALARM_SUSPEND = 1 # Battery change, cleared occlusion, etc
+        USER_SUSPEND = 2
+        AUTO_SUSPEND = 3
+        LOWSG_SUSPEND = 4
+        SET_CHANGE_SUSPEND = 5 # AKA NOTSEATED_SUSPEND
+        PLGM_PREDICTED_LOW_SG = 10
+
+    SUSPEND_REASON_NAME = {
+        1: 'Alarm suspend',
+        2: 'User suspend',
+        3: 'Auto suspend',
+        4: 'Low glucose suspend',
+        5: 'Set change suspend',
+        10: 'Predicted low glucose suspend',
+    }
+     
+    class RESUME_REASON:
+        USER_SELECTS_RESUME = 1
+        USER_CLEARS_ALARM = 2
+        LGM_MANUAL_RESUME = 3
+        LGM_AUTO_RESUME_MAX_SUSP = 4 # After an auto suspend, but no CGM data afterwards.
+        LGM_AUTO_RESUME_PSG_SG = 5 # When SG reaches the Preset SG level
+        LGM_MANUAL_RESUME_VIA_DISABLE = 6
+
+    RESUME_REASON_NAME = {
+        1: 'User resumed',
+        2: 'User cleared alarm',
+        3: 'Low glucose manual resume',
+        4: 'Low glucose auto resume - max suspend period',
+        5: 'Low glucose auto resume - preset glucose reached',
+        6: 'Low glucose manual resume via disable',
+    }
+
 class NGPHistoryEvent:
     class EVENT_TYPE:
         TIME_RESET = 0x02
@@ -648,21 +682,34 @@ class InsulinDeliveryStoppedEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Reason:{1}'.format(NGPHistoryEvent.__str__(self), 
-                                                                    self.suspendReason)
+        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__str__(self), 
+                                                                    self.suspendReason,
+                                                                    self.suspendReasonText)
     @property
     def suspendReason(self):
         #See NGPUtil.NGPConstants.SUSPEND_REASON        
         return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+
+    @property
+    def suspendReasonText(self):
+        #See NGPUtil.NGPConstants.SUSPEND_REASON        
+        return NGPConstants.SUSPEND_REASON_NAME(self.suspendReason)
+
     
 class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
     def __init__(self, eventData):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Reason:{1}'.format(NGPHistoryEvent.__str__(self), 
-                                                                    self.resumeReason)
+        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__str__(self), 
+                                                                    self.resumeReason,
+                                                                    self.resumeReasonText)
     @property
     def resumeReason(self):
         #See See NGPUtil.NGPConstants.RESUME_REASON
         return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+
+    @property
+    def resumeReasonText(self):
+        #See NGPUtil.NGPConstants.SUSPEND_REASON        
+        return NGPConstants.RESUME_REASON_NAME(self.resumeReason)
