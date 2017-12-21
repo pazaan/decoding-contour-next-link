@@ -240,6 +240,10 @@ class NGPHistoryEvent:
             return BolusWizardEstimateEvent(self.eventData)
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.BASAL_SEGMENT_START:
             return BasalSegmentStartEvent(self.eventData)
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.INSULIN_DELIVERY_STOPPED:
+            return InsulinDeliveryStoppedEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.INSULIN_DELIVERY_RESTARTED:
+            return InsulinDeliveryRestartedEvent(self.eventData);
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -283,10 +287,6 @@ class NGPHistoryEvent:
 #         return new DualBolusPartDeliveredEvent(this.eventData);
 #       case NGPHistoryEvent.EVENT_TYPE.BOLUS_WIZARD_ESTIMATE:
 #         return new BolusWizardEstimateEvent(this.eventData);
-#       case NGPHistoryEvent.EVENT_TYPE.INSULIN_DELIVERY_STOPPED:
-#         return new InsulinDeliveryStoppedEvent(this.eventData);
-#       case NGPHistoryEvent.EVENT_TYPE.INSULIN_DELIVERY_RESTARTED:
-#         return new InsulinDeliveryRestartedEvent(this.eventData);
 #       default:
 #         // Return a default NGPHistoryEvent
 #         return this;
@@ -641,3 +641,28 @@ class BasalSegmentStartEvent(NGPHistoryEvent):
     @property 
     def patternName(self):
         return NGPConstants.BASAL_PATTERN_NAME[self.patternNumber - 1];
+
+
+class InsulinDeliveryStoppedEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Reason:{1}'.format(NGPHistoryEvent.__str__(self), 
+                                                                    self.suspendReason)
+    @property
+    def suspendReason(self):
+        #See NGPUtil.NGPConstants.SUSPEND_REASON        
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];
+    
+class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+        
+    def __str__(self):
+        return '{0} Reason:{1}'.format(NGPHistoryEvent.__str__(self), 
+                                                                    self.resumeReason)
+    @property
+    def resumeReason(self):
+        #See See NGPUtil.NGPConstants.RESUME_REASON
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)#return this.eventData[0x0B];

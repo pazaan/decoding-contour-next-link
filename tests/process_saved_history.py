@@ -30,6 +30,5 @@ if __name__ == '__main__':
     events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
     print ("# All events:")
     for ev in events:
-        if ev.timestamp > datetime(2017, 12, 14, 19, 0, 0, 0, tzinfo=utc) and ev.timestamp < datetime(2017, 12, 14, 20, 0, 0, 0, tzinfo=utc): 
-            print (ev)
+        print (ev)
     print ("# End events")
