@@ -24,10 +24,10 @@ utc = UTC()
 
 if __name__ == '__main__':
     history_pages = None
-    with open('../testdata/paulokow_20171217_cgm_sample.dat', 'rb') as input_file:
+    with open('../testdata/paulokow_20171221_history_640G_with_CGM.dat', 'rb') as input_file:
         history_pages = pickle.load(input_file)
     mt = decoding_contour_next_link.Medtronic600SeriesDriver()
-    events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
+    events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
     print ("# All events:")
     for ev in events:
         print (ev)

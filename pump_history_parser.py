@@ -1,6 +1,7 @@
 from .helpers import DateTimeHelper, BinaryDataDecoder, NumberHelper
 import struct
 import logging
+import binascii
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
@@ -255,6 +256,9 @@ class NGPHistoryEvent:
         return BinaryDataDecoder.readByte(self.eventData, 0x01) # self.eventData[0x01];
     
     def __str__(self):
+        return '{0} {1:x} {2} {3}'.format(self.__class__.__name__, self.eventType, self.timestamp, binascii.hexlify(self.eventData[0x0B:]))
+
+    def __shortstr__(self):
         return '{0} {1:x} {2}'.format(self.__class__.__name__, self.eventType, self.timestamp)
 
     def __repr__(self):
@@ -278,6 +282,28 @@ class NGPHistoryEvent:
             return InsulinDeliveryStoppedEvent(self.eventData);
         elif self.eventType == NGPHistoryEvent.EVENT_TYPE.INSULIN_DELIVERY_RESTARTED:
             return InsulinDeliveryRestartedEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.PLGM_CONTROLLER_STATE:
+            return PLGMControllerStateEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.CALIBRATION_COMPLETE:
+            return CalibrationCompleteEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.ALARM_NOTIFICATION:
+            return AlarmNotificationEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.ALARM_CLEARED:
+            return AlarmClearedEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_ALERT_SILENCE_STARTED:
+            return SensorAlertSilenceStartedEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SENSOR_ALERT_SILENCE_ENDED:
+            return SensorAlertSilenceEndedEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.GENERAL_SENSOR_SETTINGS_CHANGE:
+            return GeneralSensorSettingsChangeEvent(self.eventData);
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.DAILY_TOTALS:
+            return DailyTotalsEvent(self.eventData);        
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.START_OF_DAY_MARKER:
+            return StartOfDayMarkerEvent(self.eventData);        
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.END_OF_DAY_MARKER:
+            return EndOfDayMarkerEvent(self.eventData);    
+        elif self.eventType == NGPHistoryEvent.EVENT_TYPE.SOURCE_ID_CONFIGURATION:
+            return SourceIdConfigurationEvent(self.eventData);    
         return self
 #       case NGPHistoryEvent.EVENT_TYPE.OLD_BOLUS_WIZARD_BG_TARGETS:
 #         return new OldBolusWizardBgTargetsEvent(this.eventData);
@@ -331,7 +357,7 @@ class BloodGlucoseReadingEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} {1}'.format(NGPHistoryEvent.__str__(self), self.bgValue)
+        return '{0} {1}'.format(NGPHistoryEvent.__shortstr__(self), self.bgValue)
 
 
 #    @property
@@ -376,7 +402,7 @@ class BolusDeliveredEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Source:{1}, Number:{2}, presetBolusNumber:{3}'.format(NGPHistoryEvent.__str__(self), self.bolusSource, self.bolusNumber, self.presetBolusNumber)
+        return '{0} Source:{1}, Number:{2}, presetBolusNumber:{3}'.format(NGPHistoryEvent.__shortstr__(self), self.bolusSource, self.bolusNumber, self.presetBolusNumber)
 
     @property
     def bolusSource(self):
@@ -396,7 +422,7 @@ class NormalBolusDeliveredEvent(BolusDeliveredEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Del:{1}, Prog:{2}, Active:{3}'.format(NGPHistoryEvent.__str__(self), self.deliveredAmount, self.programmedAmount, self.activeInsulin)
+        return '{0} Del:{1}, Prog:{2}, Active:{3}'.format(NGPHistoryEvent.__shortstr__(self), self.deliveredAmount, self.programmedAmount, self.activeInsulin)
 
     @property
     def deliveredAmount(self):
@@ -415,7 +441,7 @@ class SensorGlucoseReadingsEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0}'.format(NGPHistoryEvent.__str__(self))    
+        return '{0}'.format(NGPHistoryEvent.__shortstr__(self))    
 
     @property
     def minutesBetweenReadings(self):
@@ -515,7 +541,7 @@ class SensorGlucoseReading(NGPHistoryEvent):
         return ("{0} SG:{1}, predictedSg:{2}, "
                 "isig:{6}, rateOfChange:{7}, "
                 "noisyData:{3}, discardData: {4}, sensorError:{5}").format(
-            NGPHistoryEvent.__str__(self), 
+            NGPHistoryEvent.__shortstr__(self), 
             self.sg, 
             self.predictedSg,        
             self.noisyData,
@@ -560,7 +586,7 @@ class BolusWizardEstimateEvent(NGPHistoryEvent):
                 "Wizard est.: {6}, "
                 "User modif.: {7}, "
                 "Final est.: {8}, "
-                ).format(NGPHistoryEvent.__str__(self), 
+                ).format(NGPHistoryEvent.__shortstr__(self), 
                                                     self.bgInput, 
                                                     self.carbInput,
                                                     self.foodEstimate,
@@ -652,7 +678,7 @@ class BasalSegmentStartEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Basal Rate:{1}, Pattern#:{2} \'{4}\', Segment#:{3}'.format(NGPHistoryEvent.__str__(self), 
+        return '{0} Basal Rate:{1}, Pattern#:{2} \'{4}\', Segment#:{3}'.format(NGPHistoryEvent.__shortstr__(self), 
                                                                     self.rate, 
                                                                     self.patternNumber,
                                                                     self.segmentNumber,
@@ -682,7 +708,7 @@ class InsulinDeliveryStoppedEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__str__(self), 
+        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__shortstr__(self), 
                                                                     self.suspendReason,
                                                                     self.suspendReasonText)
     @property
@@ -693,7 +719,7 @@ class InsulinDeliveryStoppedEvent(NGPHistoryEvent):
     @property
     def suspendReasonText(self):
         #See NGPUtil.NGPConstants.SUSPEND_REASON        
-        return NGPConstants.SUSPEND_REASON_NAME(self.suspendReason)
+        return NGPConstants.SUSPEND_REASON_NAME[self.suspendReason]
 
     
 class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
@@ -701,7 +727,7 @@ class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__str__(self), 
+        return '{0} Reason: {2} ({1})'.format(NGPHistoryEvent.__shortstr__(self), 
                                                                     self.resumeReason,
                                                                     self.resumeReasonText)
     @property
@@ -712,4 +738,48 @@ class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
     @property
     def resumeReasonText(self):
         #See NGPUtil.NGPConstants.SUSPEND_REASON        
-        return NGPConstants.RESUME_REASON_NAME(self.resumeReason)
+        return NGPConstants.RESUME_REASON_NAME[self.resumeReason]
+
+class PLGMControllerStateEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class CalibrationCompleteEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class AlarmNotificationEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class AlarmClearedEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class SensorAlertSilenceStartedEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class SensorAlertSilenceEndedEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class GeneralSensorSettingsChangeEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class DailyTotalsEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class SourceIdConfigurationEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class StartOfDayMarkerEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class EndOfDayMarkerEvent(NGPHistoryEvent):
+    def __str__(self):
+        return '{0}'.format(NGPHistoryEvent.__str__(self))
