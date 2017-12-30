@@ -1146,6 +1146,8 @@ class Medtronic600SeriesDriver( object ):
         for segment in historySegments:
             decodedBlocks = self.decodePumpSegment(segment, historyType)
             historyEvents += self.decodeEvents(decodedBlocks) 
+        for event in historyEvents:
+            event.postProcess(historyEvents)
         return historyEvents
 
     def getTempBasalStatus( self ):
