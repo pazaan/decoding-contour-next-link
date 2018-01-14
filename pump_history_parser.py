@@ -752,7 +752,7 @@ class BasalSegmentStartEvent(NGPHistoryEvent):
         NGPHistoryEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} Basal Rate:{1}, Pattern#:{2} \'{4}\', Segment#:{3}'.format(NGPHistoryEvent.__str__(self), 
+        return '{0} Basal Rate:{1}, Pattern#:{2} \'{4}\', Segment#:{3}'.format(NGPHistoryEvent.__shortstr__(self), 
                                                                     self.rate, 
                                                                     self.patternNumber,
                                                                     self.segmentNumber,
