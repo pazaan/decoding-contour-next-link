@@ -812,7 +812,7 @@ class Medtronic600SeriesDriver( object ):
         for packet in [ payload[ i: i+60 ] for i in range( 0, len( payload ), 60 ) ]:
             message = struct.pack( '>3sB', self.MAGIC_HEADER, len( packet ) ) + packet
             self.device.write( bytearray( message ) )
-            logger.debug("SEND: " + binascii.hexlify( message )) # Debugging
+            #logger.debug("SEND: " + binascii.hexlify( message )) # Debugging
 
     # Intercept unexpected messages from the CNL
     # These usually come from pump requests as it can occasionally resend message responses several times 
