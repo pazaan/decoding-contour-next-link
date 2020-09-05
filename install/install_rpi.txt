@@ -3,8 +3,11 @@ pip install hidapi
 pip install requests astm PyCrypto crc16 python-dateutil
 pip install python-lzo
 
-#allow script running w/o root access
-sudo copy 30-bayer.rules to /etc/udev/rules.d/
-add group bayerusb
-add user to the group bayerusb
+# Allow script running w/o root access
+sudo cp 30-bayer.rules to /etc/udev/rules.d/
 
+# Add group bayerusb
+sudo addgroup bayerusb
+
+# Add user to the group bayerusb
+sudo usermod -a -G bayerusb pi
