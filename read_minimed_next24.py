@@ -554,11 +554,11 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def activeInsulin( self ):
-        return float( struct.unpack( '>H', self.responsePayload[51:53] )[0] ) / 10000
+        return float( struct.unpack( '>I', self.responsePayload[0x31:0x35] )[0] ) / 10000
 
     @property
     def sensorBGL( self ):
-        return int( struct.unpack( '>H', self.responsePayload[53:55] )[0] )
+        return int( struct.unpack( '>H', self.responsePayload[0x35:0x37] )[0] )
 
     @property
     def trendArrow( self ):
