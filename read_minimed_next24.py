@@ -581,6 +581,21 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
             return "Unknown trend"
 
     @property
+    def sensorStatus(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        return status
+
+    @property
+    def sensorCalibrationMinutesRemaining(self):
+        minutes = int(struct.unpack('>H', self.responsePayload[0x43:0x45])[0])
+        return minutes
+
+    @property
+    def sensorBatteryPercent(self):
+        battery_percent = int(struct.unpack('>B', self.responsePayload[0x45:0x46])[0])
+        return battery_percent
+
+    @property
     def sensorBGLTimestamp( self ):
         dateTimeData = struct.unpack( '>Q', self.responsePayload[55:63] )[0]
         return DateTimeHelper.decodeDateTime( dateTimeData )
