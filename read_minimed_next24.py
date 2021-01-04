@@ -583,6 +583,22 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     @property
     def sensorStatus(self):
         status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        if status == 0x00:
+            return "No sensor"
+        elif status & 0x01 == 0x01:
+            return "Calibrating 0x{:02X}".format(status)
+        elif status & 0x02 == 0x02:
+            return "Calibration complete 0x{:02X}".format(status)
+        elif status & 0x04 == 0x04:
+            return "SG value unavailable 0x{:02X}".format(status)
+        else:
+            return "Unknown sensor status: 0x{:02X}".format(status)
+        return status
+
+    @property
+    def sensorControl(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x42:0x43])[0])
+        return "0x{0:02X} ({0:08b})".format(status)
         return status
 
     @property
@@ -592,7 +608,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def sensorBatteryPercent(self):
-        battery_percent = int(struct.unpack('>B', self.responsePayload[0x45:0x46])[0])
+        battery_percent = 100 * (0x0F & int(struct.unpack('>B', self.responsePayload[0x45:0x46])[0])) / 0x0F
         return battery_percent
 
     @property
