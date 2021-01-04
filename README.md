@@ -2,7 +2,7 @@
 
 [![Join the chat at https://gitter.im/pazaan/decoding-contour-next-link](https://badges.gitter.im/pazaan/decoding-contour-next-link.svg)](https://gitter.im/pazaan/decoding-contour-next-link?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-Space to collaborate on decoding Contour Next Link comms protocols, and the piggy-backed pump comms
+Space to collaborate on decoding Contour Next Link 2.4 comms protocols, and the piggy-backed pump comms
 
 ## Getting Started
 * Make sure you have `python` and `pip` installed
