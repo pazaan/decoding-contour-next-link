@@ -529,6 +529,10 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         return response
 
     @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper()
+
+    @property
     def currentBasalRate( self ):
         return float( struct.unpack( '>I', self.responsePayload[0x1b:0x1f] )[0] ) / 10000
 
@@ -561,6 +565,26 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         return int( struct.unpack( '>H', self.responsePayload[0x35:0x37] )[0] )
 
     @property
+    def trendArrowValue(self):
+        status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+        if status == 0x60:
+            return 0
+        elif status == 0xc0:
+            return 3
+        elif status == 0xa0:
+            return 2
+        elif status == 0x80:
+            return 1
+        elif status == 0x40:
+            return -1
+        elif status == 0x20:
+            return -2
+        elif status == 0x00:
+            return -3
+        else:
+            return None
+
+    @property
     def trendArrow( self ):
         status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
         if status == 0x60:
@@ -581,6 +605,11 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
             return "Unknown trend"
 
     @property
+    def sensorStatusValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        return status
+
+    @property
     def sensorStatus(self):
         status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
         if status == 0x00:
@@ -599,6 +628,11 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
     def sensorControl(self):
         status = int(struct.unpack('>B', self.responsePayload[0x42:0x43])[0])
         return "0x{0:02X} ({0:08b})".format(status)
+        return status
+
+    @property
+    def sensorControlValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x42:0x43])[0])
         return status
 
     @property
