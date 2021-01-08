@@ -601,12 +601,21 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
             return "2 arrows down"
         elif status == 0x00:
             return "3 arrows down"
+        elif status == 0x00:
+            return "3 arrows down"
+        elif status & 0x80 == 0x80:
+            return "Calibration needed"
         else:
-            return "Unknown trend"
+            return "Unknown trend"    
 
     @property
     def sensorStatusValue(self):
         status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        return status
+
+    @property
+    def sensorRateOfChangePerMin(self):
+        status = float(struct.unpack('>h', self.responsePayload[0x46:0x48])[0]) / 100
         return status
 
     @property
@@ -659,7 +668,62 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def bolusWizardBGL( self ):
-        return struct.unpack( '>H', self.responsePayload[73:75] )[0]
+        return struct.unpack( '>H', self.responsePayload[0x49:0x4B] )[0]
+
+    @property
+    def StatusValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x03:0x04])[0])
+        return status
+
+    @property
+    def StatusCgm(self):
+        return self.StatusValue & 0x40 != 0
+
+    @property
+    def StatusTempBasal(self):
+        return self.StatusValue & 0x20 != 0
+
+    @property
+    def StatusInsulinDelivery(self):
+        return self.StatusValue & 0x10 != 0
+
+    @property
+    def StatusBolusingDual(self):
+        return self.StatusValue & 0x08 != 0
+
+    @property
+    def StatusBolusingSquare(self):
+        return self.StatusValue & 0x04 != 0
+
+    @property
+    def StatusBolusingNormal(self):
+        return self.StatusValue & 0x02 != 0
+
+    @property
+    def StatusSuspended(self):
+        return self.StatusValue & 0x01 != 0
+
+    @property
+    def Status(self):
+        status = {
+            "CGM Active": self.StatusCgm,
+            "Temp basal active": self.StatusTempBasal,
+            "Insulin delivery": self.StatusInsulinDelivery,
+            "Bolusing dual": self.StatusBolusingDual,
+            "Bolusing square": self.StatusBolusingSquare,
+            "Bolusing normal": self.StatusBolusingNormal,
+            "Suspended": self.StatusSuspended,
+        }
+        return status
+
+    @property
+    def lastBolusAmount( self ):
+        return float( struct.unpack( '>I', self.responsePayload[0x10:0x14] )[0] ) / 10000
+
+    @property
+    def lastBolusTimestamp( self ):
+        dateTimeData = struct.unpack( '>L', self.responsePayload[55:63] )[0]
+        return DateTimeHelper.decodeDateTime( dateTimeData, 0 )
 
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
