@@ -722,7 +722,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def lastBolusTimestamp( self ):
-        dateTimeData = struct.unpack( '>L', self.responsePayload[55:63] )[0]
+        dateTimeData = struct.unpack( '>L', self.responsePayload[0x14:0x18])[0]
         return DateTimeHelper.decodeDateTime( dateTimeData, 0 )
 
 class BeginEHSMMessage( MedtronicSendMessage ):
