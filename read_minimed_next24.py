@@ -366,6 +366,12 @@ class MedtronicReceiveMessage( MedtronicMessage ):
             response.__class__ = MultiPacketSegment
         elif response.messageType == COM_D_COMMAND.END_HISTORY_TRANSMISSION:
             response.__class__ = MultiPacketSegment
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            response.__class__ = PumpBolusWizardCarbRatiosResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_RESPONSE:
+            response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_RESPONSE:
+            response.__class__ = PumpBolusWizardBGTargetsResponseMessage        
         
         return response
 
