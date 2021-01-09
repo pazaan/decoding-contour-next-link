@@ -1765,10 +1765,10 @@ def pumpDownload(mt):
     print(carbratios.wholePayloadHex)
 
     sensfactors = mt.getBolusWizardSensitivityFactors()
-    print("Sensivity factors:")
+    print("Sensitivity factors:")
     print(sensfactors.wholePayloadHex)
 
-    bgtargets = mt.getBolusWizardCarbRatios()
+    bgtargets = mt.getBolusWizardBGTargets()
     print("BG Targets")
     print(bgtargets.wholePayloadHex)
 
