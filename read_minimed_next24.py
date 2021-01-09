@@ -725,6 +725,51 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         dateTimeData = struct.unpack( '>L', self.responsePayload[0x14:0x18])[0]
         return DateTimeHelper.decodeDateTime( dateTimeData, 0 )
 
+class PumpBolusWizardCarbRatiosResponseMessage( MedtronicReceiveMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardCarbRatiosResponseMessage
+        return response
+
+    @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper()
+
+class PumpBolusWizardSensitivityFactorsResponseMessage( MedtronicReceiveMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
+        return response
+
+    @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper()
+
+class PumpBolusWizardBGTargetsResponseMessage( MedtronicReceiveMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardBGTargetsResponseMessage
+        return response
+
+    @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper()
+
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         payload = struct.pack( '>B', 0x00 )
@@ -742,6 +787,18 @@ class PumpTimeRequestMessage( MedtronicSendMessage ):
 class PumpStatusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_PUMP_STATUS_REQUEST, session )
+
+class PumpBolusWizardCarbRatiosRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_REQUEST, session )
+
+class PumpBolusWizardSensitivityFactorsRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_REQUEST, session )
+
+class PumpBolusWizardBGTargetsRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_REQUEST, session )
 
 class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
     def __init__( self, session, dateStart, dateEnd, dateOffset, requestType = HISTORY_DATA_TYPE.PUMP_DATA):
@@ -1359,6 +1416,56 @@ class Medtronic600SeriesDriver( object ):
         response = self.getMedtronicMessage([COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE])
         return response
 
+    def getBolusWizardCarbRatios( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
+        return response
+
+    def getBolusWizardSensitivityFactors( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardSensitivityFactorsRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_RESPONSE])
+        return response
+
+    def getBolusWizardBGTargets( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardBGTargetsRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_RESPONSE])
+        return response
+
+    def getBolusWizardCarbRatios( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
+        return response
+
+    def getBolusWizardCarbRatios( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
+        return response
+
     def getPumpHistoryInfo( self, dateStart, dateEnd, requestType = HISTORY_DATA_TYPE.PUMP_DATA ):
         logger.info("# Get Pump History Info")
         mtMessage = PumpHistoryInfoRequestMessage( self.session, dateStart, dateEnd, self.offset, requestType )
@@ -1629,6 +1736,11 @@ def downloadPumpSession(downloadOperations):
         mt.closeDevice()
 
 def pumpDownload(mt):
+    """demo pump download routine
+
+    :param mt: driver reference
+    :type mt: Medtronic600SeriesDriver
+    """
     status = mt.getPumpStatus()
     print (binascii.hexlify( status.responsePayload ))
     print ("Active Insulin: {0:.3f}U".format( status.activeInsulin ))
@@ -1641,47 +1753,59 @@ def pumpDownload(mt):
     print ("Temp basal percentage: {0}%".format( status.tempBasalPercentage ))
     print ("Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining ))
     print ("Battery remaining: {0}%".format( status.batteryLevelPercentage ))
+
+    carbratios = mt.getBolusWizardCarbRatios()
+    print("Carb ratios:")
+    print(carbratios.wholePayloadHex)
+
+    sensfactors = mt.getBolusWizardSensitivityFactors()
+    print("Sensivity factors:")
+    print(sensfactors.wholePayloadHex)
+
+    bgtargets = mt.getBolusWizardCarbRatios()
+    print("BG Targets")
+    print(bgtargets.wholePayloadHex)
+
+    # print ("Getting Pump history info")
+    # start_date = datetime.datetime.now() - datetime.timedelta(days=1)
+    # historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    # # print (binascii.hexlify( historyInfo.responsePayload,  ))
+    # print (" Pump Start: {0}".format(historyInfo.datetimeStart))
+    # print (" Pump End: {0}".format(historyInfo.datetimeEnd));
+    # print (" Pump Size: {0}".format(historyInfo.historySize));
     
-    print ("Getting Pump history info")
-    start_date = datetime.datetime.now() - datetime.timedelta(days=1)
-    historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
-    # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    print (" Pump Start: {0}".format(historyInfo.datetimeStart))
-    print (" Pump End: {0}".format(historyInfo.datetimeEnd));
-    print (" Pump Size: {0}".format(historyInfo.historySize));
-    
-    print ("Getting Pump history")
-    history_pages = mt.getPumpHistory(historyInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    # print ("Getting Pump history")
+    # history_pages = mt.getPumpHistory(historyInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
 
     # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
     #with open('history_data.dat', 'wb') as output:
     #    pickle.dump(history_pages, output)
 
-    events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
-    print ("# All Pump events:")
-    for ev in events:
-        print (" Pump: ", ev)
-    print ("# End Pump events")
+    # events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
+    # print ("# All Pump events:")
+    # for ev in events:
+    #     print (" Pump: ", ev)
+    # print ("# End Pump events")
 
-    print ("Getting sensor history info")
-    sensHistoryInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
-    # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    print (" Sensor Start: {0}".format(sensHistoryInfo.datetimeStart))
-    print (" Sensor End: {0}".format(sensHistoryInfo.datetimeEnd));
-    print (" Sensor Size: {0}".format(sensHistoryInfo.historySize));
+    # print ("Getting sensor history info")
+    # sensHistoryInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    # # print (binascii.hexlify( historyInfo.responsePayload,  ))
+    # print (" Sensor Start: {0}".format(sensHistoryInfo.datetimeStart))
+    # print (" Sensor End: {0}".format(sensHistoryInfo.datetimeEnd));
+    # print (" Sensor Size: {0}".format(sensHistoryInfo.historySize));
     
-    print ("Getting Sensor history")
-    sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    # print ("Getting Sensor history")
+    # sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
 
-    # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
-    #with open('sensor_history_data.dat', 'wb') as output:
-    #    pickle.dump(sensor_history_pages, output)
+    # # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
+    # #with open('sensor_history_data.dat', 'wb') as output:
+    # #    pickle.dump(sensor_history_pages, output)
 
-    sensorEvents = mt.processPumpHistory(sensor_history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
-    print ("# All Sensor events:")
-    for ev in sensorEvents:
-        print (" Sensor", ev)
-    print ("# End Sensor events")
+    # sensorEvents = mt.processPumpHistory(sensor_history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
+    # print ("# All Sensor events:")
+    # for ev in sensorEvents:
+    #     print (" Sensor", ev)
+    # print ("# End Sensor events")
 
     
     # print (binascii.hexlify( mt.doRemoteSuspend().responsePayload ))
