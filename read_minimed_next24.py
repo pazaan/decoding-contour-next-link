@@ -21,6 +21,7 @@ import pickle # needed for local history export
 import lzo # pip install python-lzo
 from .pump_history_parser import NGPHistoryEvent, BloodGlucoseReadingEvent
 from .helpers import DateTimeHelper
+from datetime import time
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +380,9 @@ class MedtronicReceiveMessage( MedtronicMessage ):
     def messageType( self ):
         return struct.unpack( '>H', self.responsePayload[1:3] )[0]
 
+    @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper()
 
 class ReadInfoResponseMessage( object ):
     @classmethod
@@ -533,10 +537,6 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpStatusResponseMessage
         return response
-
-    @property
-    def wholePayloadHex(self):
-        return binascii.hexlify(self.responsePayload).upper()
 
     @property
     def currentBasalRate( self ):
@@ -731,7 +731,21 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         dateTimeData = struct.unpack( '>L', self.responsePayload[0x14:0x18])[0]
         return DateTimeHelper.decodeDateTime( dateTimeData, 0 )
 
-class PumpBolusWizardCarbRatiosResponseMessage( MedtronicReceiveMessage ):
+class PumpBolusWizardAbstractResponseMessage( MedtronicReceiveMessage ):
+
+    @classmethod
+    def get_record_size(cls):
+        pass
+
+    @property
+    def recordCount(self):
+        count = struct.unpack( '>B', self.responsePayload[0x05:0x06] )[0]
+        return count
+
+    def _get_record_part(self, index):
+        return self.responsePayload[0x06 + index * self.get_record_size():0x06 + (index + 1) * self.get_record_size()]    
+
+class PumpBolusWizardCarbRatiosResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
@@ -742,11 +756,19 @@ class PumpBolusWizardCarbRatiosResponseMessage( MedtronicReceiveMessage ):
         response.__class__ = PumpBolusWizardCarbRatiosResponseMessage
         return response
 
-    @property
-    def wholePayloadHex(self):
-        return binascii.hexlify(self.responsePayload).upper()
+    @classmethod
+    def get_record_size(cls):
+        return 9
+    
+    def CarbRatio(self, index):
+        ratio = float(struct.unpack(">H", self._get_record_part(index)[0x06:0x08])[0]) / 1000
+        return ratio
 
-class PumpBolusWizardSensitivityFactorsResponseMessage( MedtronicReceiveMessage ):
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
+        return time(time_slot / 2, 30 * (time_slot % 2))
+
+class PumpBolusWizardSensitivityFactorsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
@@ -757,11 +779,7 @@ class PumpBolusWizardSensitivityFactorsResponseMessage( MedtronicReceiveMessage 
         response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
         return response
 
-    @property
-    def wholePayloadHex(self):
-        return binascii.hexlify(self.responsePayload).upper()
-
-class PumpBolusWizardBGTargetsResponseMessage( MedtronicReceiveMessage ):
+class PumpBolusWizardBGTargetsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicReceiveMessage.decode( message, session )
@@ -771,10 +789,6 @@ class PumpBolusWizardBGTargetsResponseMessage( MedtronicReceiveMessage ):
         # Since we only add behaviour, we can cast this class to ourselves
         response.__class__ = PumpBolusWizardBGTargetsResponseMessage
         return response
-
-    @property
-    def wholePayloadHex(self):
-        return binascii.hexlify(self.responsePayload).upper()
 
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
@@ -1413,6 +1427,11 @@ class Medtronic600SeriesDriver( object ):
         return result
 
     def getPumpStatus( self ):
+        """Get current pump status
+
+        :return: response object
+        :rtype: PumpStatusResponseMessage
+        """
         logger.info("# Get Pump Status")
         mtMessage = PumpStatusRequestMessage( self.session )
 
@@ -1423,6 +1442,11 @@ class Medtronic600SeriesDriver( object ):
         return response
 
     def getBolusWizardCarbRatios( self ):
+        """Get bolus wizard carb ratios settings
+
+        :return: response object
+        :rtype: PumpBolusWizardCarbRatiosResponseMessage
+        """
         logger.info("# Get Pump Status")
         mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
 
@@ -1433,6 +1457,11 @@ class Medtronic600SeriesDriver( object ):
         return response
 
     def getBolusWizardSensitivityFactors( self ):
+        """Get bolus wizard sensitivity factors settings
+
+        :return: response object
+        :rtype: PumpBolusWizardSensitivityFactorsResponseMessage
+        """
         logger.info("# Get Pump Status")
         mtMessage = PumpBolusWizardSensitivityFactorsRequestMessage( self.session )
 
@@ -1443,6 +1472,11 @@ class Medtronic600SeriesDriver( object ):
         return response
 
     def getBolusWizardBGTargets( self ):
+        """Get bolus wizard BG targets settings
+
+        :return: response object
+        :rtype: PumpBolusWizardBGTargetsResponseMessage
+        """
         logger.info("# Get Pump Status")
         mtMessage = PumpBolusWizardBGTargetsRequestMessage( self.session )
 
