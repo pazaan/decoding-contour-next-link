@@ -85,5 +85,76 @@ class TestBolusWizardSettingsDecode(unittest.TestCase):
             ]
         })
 
+    def test_PumpBolusWizardSensitivityFactorsResponseMessage(self):
+        example = '04012F1AB7050096005300007800430C00640038140078004324008C004E2E'
+        example_binary = bytearray.fromhex(example)
+
+        testobj = PumpBolusWizardSensitivityFactorsResponseMessage()
+        testobj.responsePayload = example_binary
+
+        self.assertEquals(testobj.wholePayloadHex, example)
+        self.assertEquals(testobj.recordCount, 5)
+
+        self.assertEquals(testobj.FactorMgDl(0), 150)
+        self.assertEquals(testobj.FactorMmolL(0), 83)
+        self.assertEquals(testobj.StartTime(0), time(0, 0))
+        self.assertEquals(testobj.EndTime(0), time(6, 00))
+
+        self.assertEquals(testobj.FactorMgDl(1), 120)
+        self.assertEquals(testobj.FactorMmolL(1), 67)
+        self.assertEquals(testobj.StartTime(1), time(6, 00))
+        self.assertEquals(testobj.EndTime(1), time(10, 00))
+
+        self.assertEquals(testobj.FactorMgDl(2), 100)
+        self.assertEquals(testobj.FactorMmolL(2), 56)
+        self.assertEquals(testobj.StartTime(2), time(10, 00))
+        self.assertEquals(testobj.EndTime(2), time(18, 00))
+
+        self.assertEquals(testobj.FactorMgDl(3), 120)
+        self.assertEquals(testobj.FactorMmolL(3), 67)
+        self.assertEquals(testobj.StartTime(3), time(18, 00))
+        self.assertEquals(testobj.EndTime(3), time(23, 00))
+
+        self.assertEquals(testobj.FactorMgDl(4), 140)
+        self.assertEquals(testobj.FactorMmolL(4), 78)
+        self.assertEquals(testobj.StartTime(4), time(23, 00))
+        self.assertEquals(testobj.EndTime(4), time.max)
+
+        self.assertDictEqual(testobj.FullConfiguration, {
+            "count": 5,
+            "records": [
+                {
+                    "starttime": time(0, 0),
+                    "endtime": time(6, 00),
+                    "factorMgDl": 150,
+                    "factorMmolL": 83,
+                },
+                {
+                    "starttime": time(6, 00),
+                    "endtime": time(10, 00),
+                    "factorMgDl": 120,
+                    "factorMmolL": 67,
+                },
+                {
+                    "starttime": time(10, 00),
+                    "endtime": time(18, 00),
+                    "factorMgDl": 100,
+                    "factorMmolL": 56,
+                },
+                {
+                    "starttime": time(18, 00),
+                    "endtime": time(23, 0),
+                    "factorMgDl": 120,
+                    "factorMmolL": 67,
+                },
+                {
+                    "starttime": time(23, 0),
+                    "endtime": time.max,
+                    "factorMgDl": 140,
+                    "factorMmolL": 78,
+                },
+            ]
+        })
+
 if __name__ == '__main__':
     unittest.main()

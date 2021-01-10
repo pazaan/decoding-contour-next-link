@@ -804,6 +804,35 @@ class PumpBolusWizardSensitivityFactorsResponseMessage( PumpBolusWizardAbstractR
         response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
         return response
 
+    @classmethod
+    def get_record_size(cls):
+        return 5
+    
+    def FactorMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x00:0x02])[0]
+        return factor
+
+    def FactorMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x02:0x04])[0]
+        return factor
+
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x04:0x05])[0]
+        return time(time_slot / 2, 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "factorMgDl": self.FactorMgDl(i),
+            "factorMmolL": self.FactorMmolL(i),
+        }
+
 class PumpBolusWizardBGTargetsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
     def decode( cls, message, session ):
