@@ -156,5 +156,81 @@ class TestBolusWizardSettingsDecode(unittest.TestCase):
             ]
         })
 
+    def test_PumpBolusWizardBGTargetsResponseMessage(self):
+        example = '050132D1E10400780043005A003200007800430050002C0A007800430050002C1000780043005A003224'
+        example_binary = bytearray.fromhex(example)
+
+        testobj = PumpBolusWizardBGTargetsResponseMessage()
+        testobj.responsePayload = example_binary
+
+        self.assertEquals(testobj.wholePayloadHex, example)
+        self.assertEquals(testobj.recordCount, 4)
+
+        self.assertEquals(testobj.LowTargetMgDl(0), 90)
+        self.assertEquals(testobj.HighTargetMgDl(0), 120)
+        self.assertEquals(testobj.LowTargetMmolL(0), 50)
+        self.assertEquals(testobj.HighTargetMmolL(0), 67)
+        self.assertEquals(testobj.StartTime(0), time(0, 0))
+        self.assertEquals(testobj.EndTime(0), time(5, 00))
+
+        self.assertEquals(testobj.LowTargetMgDl(1), 80)
+        self.assertEquals(testobj.HighTargetMgDl(1), 120)
+        self.assertEquals(testobj.LowTargetMmolL(1), 44)
+        self.assertEquals(testobj.HighTargetMmolL(1), 67)
+        self.assertEquals(testobj.StartTime(1), time(5, 0))
+        self.assertEquals(testobj.EndTime(1), time(8, 00))
+
+        self.assertEquals(testobj.LowTargetMgDl(2), 80)
+        self.assertEquals(testobj.HighTargetMgDl(2), 120)
+        self.assertEquals(testobj.LowTargetMmolL(2), 44)
+        self.assertEquals(testobj.HighTargetMmolL(2), 67)
+        self.assertEquals(testobj.StartTime(2), time(8, 0))
+        self.assertEquals(testobj.EndTime(2), time(18, 00))
+
+        self.assertEquals(testobj.LowTargetMgDl(3), 90)
+        self.assertEquals(testobj.HighTargetMgDl(3), 120)
+        self.assertEquals(testobj.LowTargetMmolL(3), 50)
+        self.assertEquals(testobj.HighTargetMmolL(3), 67)
+        self.assertEquals(testobj.StartTime(3), time(18, 0))
+        self.assertEquals(testobj.EndTime(3), time.max)
+
+        self.assertDictEqual(testobj.FullConfiguration, {
+            "count": 4,
+            "records": [
+                {
+                    "starttime": time(0, 0),
+                    "endtime": time(5, 00),
+                    "lowTargetMgDl": 90,
+                    "lowTargetMmolL": 50,
+                    "highTargetMgDl": 120,
+                    "highTargetMmolL": 67,
+                },
+                {
+                    "starttime": time(5, 00),
+                    "endtime": time(8, 00),
+                    "lowTargetMgDl": 80,
+                    "lowTargetMmolL": 44,
+                    "highTargetMgDl": 120,
+                    "highTargetMmolL": 67,
+                },
+                {
+                    "starttime": time(8, 00),
+                    "endtime": time(18, 00),
+                    "lowTargetMgDl": 80,
+                    "lowTargetMmolL": 44,
+                    "highTargetMgDl": 120,
+                    "highTargetMmolL": 67,
+                },
+                {
+                    "starttime": time(18, 00),
+                    "endtime": time.max,
+                    "lowTargetMgDl": 90,
+                    "lowTargetMmolL": 50,
+                    "highTargetMgDl": 120,
+                    "highTargetMmolL": 67,
+                },
+            ]
+        })
+
 if __name__ == '__main__':
     unittest.main()

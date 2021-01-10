@@ -844,6 +844,46 @@ class PumpBolusWizardBGTargetsResponseMessage( PumpBolusWizardAbstractResponseMe
         response.__class__ = PumpBolusWizardBGTargetsResponseMessage
         return response
 
+    @classmethod
+    def get_record_size(cls):
+        return 9
+    
+    def LowTargetMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x04:0x06])[0]
+        return factor
+
+    def LowTargetMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x06:0x08])[0]
+        return factor
+
+    def HighTargetMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x00:0x02])[0]
+        return factor
+
+    def HighTargetMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x02:0x04])[0]
+        return factor
+
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
+        return time(time_slot / 2, 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "lowTargetMgDl": self.LowTargetMgDl(i),
+            "lowTargetMmolL": self.LowTargetMmolL(i),
+            "highTargetMgDl": self.HighTargetMgDl(i),
+            "highTargetMmolL": self.HighTargetMmolL(i),
+        }
+
+
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         payload = struct.pack( '>B', 0x00 )
