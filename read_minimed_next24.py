@@ -21,7 +21,7 @@ import pickle # needed for local history export
 import lzo # pip install python-lzo
 from .pump_history_parser import NGPHistoryEvent, BloodGlucoseReadingEvent
 from .helpers import DateTimeHelper
-from datetime import time
+from datetime import time, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -737,6 +737,9 @@ class PumpBolusWizardAbstractResponseMessage( MedtronicReceiveMessage ):
     def get_record_size(cls):
         pass
 
+    def getRecord(self, i):
+        pass
+
     @property
     def recordCount(self):
         count = struct.unpack( '>B', self.responsePayload[0x05:0x06] )[0]
@@ -744,6 +747,16 @@ class PumpBolusWizardAbstractResponseMessage( MedtronicReceiveMessage ):
 
     def _get_record_part(self, index):
         return self.responsePayload[0x06 + index * self.get_record_size():0x06 + (index + 1) * self.get_record_size()]    
+
+    @property
+    def FullConfiguration(self):
+        return {
+            "count": self.recordCount,
+            "records": [
+                self.getRecord(i) for i in range(0, self.recordCount)
+            ]
+        }
+
 
 class PumpBolusWizardCarbRatiosResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
@@ -767,6 +780,18 @@ class PumpBolusWizardCarbRatiosResponseMessage( PumpBolusWizardAbstractResponseM
     def StartTime(self, index):
         time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
         return time(time_slot / 2, 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "ratio": self.CarbRatio(i)
+        }
 
 class PumpBolusWizardSensitivityFactorsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
     @classmethod
