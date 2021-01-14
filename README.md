@@ -5,7 +5,14 @@
 Space to collaborate on decoding Contour Next Link 2.4 comms protocols, and the piggy-backed pump comms
 
 ## Getting Started
-* Make sure you have `python` and `pip` installed
+* Make sure you have the following dependencies installed:  
+    * `python`
+    * `pip`
+    * `python-dev`
+    * `libusb-1.0-0-dev`
+    * `libudev-dev`
+    * `liblzo2-dev`
+
 * Clone this project
 * If you're running macOS (El Capitan or later), you'll need to update `setuptools` like this first (due to [System Integrity Protection](https://support.apple.com/en-au/HT204899)):
 ```
