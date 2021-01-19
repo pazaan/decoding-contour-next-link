@@ -572,47 +572,49 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def trendArrowValue(self):
-        status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
-        if status == 0x60:
-            return 0
-        elif status == 0xc0:
-            return 3
-        elif status == 0xa0:
-            return 2
-        elif status == 0x80:
-            return 1
-        elif status == 0x40:
-            return -1
-        elif status == 0x20:
-            return -2
-        elif status == 0x00:
-            return -3
+        if self.StatusCgm:
+            status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+            if status & 0xF0 == 0x60:
+                return 0
+            elif status & 0xF0 == 0xc0:
+                return 3
+            elif status & 0xF0 == 0xa0:
+                return 2
+            elif status & 0xF0 == 0x80:
+                return 1
+            elif status & 0xF0 == 0x40:
+                return -1
+            elif status & 0xF0 == 0x20:
+                return -2
+            elif status & 0xF0 == 0x00:
+                return -3
+            else:
+                return None
         else:
             return None
 
     @property
     def trendArrow( self ):
-        status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
-        if status == 0x60:
-            return "No arrows"
-        elif status == 0xc0:
-            return "3 arrows up"
-        elif status == 0xa0:
-            return "2 arrows up"
-        elif status == 0x80:
-            return "1 arrow up"
-        elif status == 0x40:
-            return "1 arrow down"
-        elif status == 0x20:
-            return "2 arrows down"
-        elif status == 0x00:
-            return "3 arrows down"
-        elif status == 0x00:
-            return "3 arrows down"
-        elif status & 0x80 == 0x80:
-            return "Calibration needed"
+        if self.StatusCgm:
+            status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+            if status & 0xF0 == 0x60:
+                return "No arrows"
+            elif status & 0xF0 == 0xc0:
+                return "3 arrows up"
+            elif status & 0xF0 == 0xa0:
+                return "2 arrows up"
+            elif status & 0xF0 == 0x80:
+                return "1 arrow up"
+            elif status & 0xF0 == 0x40:
+                return "1 arrow down"
+            elif status & 0xF0 == 0x20:
+                return "2 arrows down"
+            elif status & 0xF0 == 0x00:
+                return "3 arrows down"
+            elif status & 0xF0 == 0xE0:
+                return "Unknown trend"
         else:
-            return "Unknown trend"    
+            return None
 
     @property
     def sensorStatusValue(self):
