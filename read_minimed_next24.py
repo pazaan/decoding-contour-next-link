@@ -640,7 +640,7 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         if status == 0x00:
             ret = "Sensor init cycle."
         elif status == 0x04:
-            ret = "Sensor init till 1st calibration."
+            ret = "Sensor not calibrated."
         elif status == 0x10:
             ret = "Sensor operational."
         elif status == 0x14:
