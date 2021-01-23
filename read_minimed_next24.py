@@ -1916,46 +1916,46 @@ def pumpDownload(mt):
     print("BG Targets")
     print(bgtargets.wholePayloadHex)
 
-    # print ("Getting Pump history info")
-    # start_date = datetime.datetime.now() - datetime.timedelta(days=1)
-    # historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
-    # # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    # print (" Pump Start: {0}".format(historyInfo.datetimeStart))
-    # print (" Pump End: {0}".format(historyInfo.datetimeEnd));
-    # print (" Pump Size: {0}".format(historyInfo.historySize));
+    print ("Getting Pump history info")
+    start_date = datetime.datetime.now() - datetime.timedelta(days=1)
+    historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    # print (binascii.hexlify( historyInfo.responsePayload,  ))
+    print (" Pump Start: {0}".format(historyInfo.datetimeStart))
+    print (" Pump End: {0}".format(historyInfo.datetimeEnd));
+    print (" Pump Size: {0}".format(historyInfo.historySize));
     
-    # print ("Getting Pump history")
-    # history_pages = mt.getPumpHistory(historyInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
+    print ("Getting Pump history")
+    history_pages = mt.getPumpHistory(historyInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)
 
     # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
     #with open('history_data.dat', 'wb') as output:
     #    pickle.dump(history_pages, output)
 
-    # events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
-    # print ("# All Pump events:")
-    # for ev in events:
-    #     print (" Pump: ", ev)
-    # print ("# End Pump events")
+    events = mt.processPumpHistory(history_pages, HISTORY_DATA_TYPE.PUMP_DATA)
+    print ("# All Pump events:")
+    for ev in events:
+        print (" Pump: ", ev)
+    print ("# End Pump events")
 
-    # print ("Getting sensor history info")
-    # sensHistoryInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
-    # # print (binascii.hexlify( historyInfo.responsePayload,  ))
-    # print (" Sensor Start: {0}".format(sensHistoryInfo.datetimeStart))
-    # print (" Sensor End: {0}".format(sensHistoryInfo.datetimeEnd));
-    # print (" Sensor Size: {0}".format(sensHistoryInfo.historySize));
+    print ("Getting sensor history info")
+    sensHistoryInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    # print (binascii.hexlify( historyInfo.responsePayload,  ))
+    print (" Sensor Start: {0}".format(sensHistoryInfo.datetimeStart))
+    print (" Sensor End: {0}".format(sensHistoryInfo.datetimeEnd));
+    print (" Sensor Size: {0}".format(sensHistoryInfo.historySize));
     
-    # print ("Getting Sensor history")
-    # sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
+    print ("Getting Sensor history")
+    sensor_history_pages = mt.getPumpHistory(sensHistoryInfo.historySize, start_date, datetime.datetime.max, HISTORY_DATA_TYPE.SENSOR_DATA)
 
-    # # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
-    # #with open('sensor_history_data.dat', 'wb') as output:
-    # #    pickle.dump(sensor_history_pages, output)
+    # Uncomment to save events for testing without Pump (use: tests/process_saved_history.py)
+    #with open('sensor_history_data.dat', 'wb') as output:
+    #    pickle.dump(sensor_history_pages, output)
 
-    # sensorEvents = mt.processPumpHistory(sensor_history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
-    # print ("# All Sensor events:")
-    # for ev in sensorEvents:
-    #     print (" Sensor", ev)
-    # print ("# End Sensor events")
+    sensorEvents = mt.processPumpHistory(sensor_history_pages, HISTORY_DATA_TYPE.SENSOR_DATA)
+    print ("# All Sensor events:")
+    for ev in sensorEvents:
+        print (" Sensor", ev)
+    print ("# End Sensor events")
 
     
     # print (binascii.hexlify( mt.doRemoteSuspend().responsePayload ))
