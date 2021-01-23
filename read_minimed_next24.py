@@ -334,6 +334,11 @@ class MedtronicSendMessage( MedtronicMessage ):
         self.session.sendSequenceNumber += 1
 
 class MedtronicReceiveMessage( MedtronicMessage ):
+
+    def __init__( self, session=None, responsePayload=None ):
+        MedtronicMessage.__init__( self, session=session )
+        self.responsePayload = responsePayload
+    
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicMessage.decode( message, session )
@@ -617,29 +622,38 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
             return None
 
     @property
-    def sensorStatusValue(self):
-        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
-        return status
-
-    @property
     def sensorRateOfChangePerMin(self):
         status = float(struct.unpack('>h', self.responsePayload[0x46:0x48])[0]) / 100
         return status
 
     @property
-    def sensorStatus(self):
+    def sensorStatusValue(self):
         status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
-        if status == 0x00:
-            return "No sensor"
-        elif status & 0x01 == 0x01:
-            return "Calibrating 0x{:02X}".format(status)
-        elif status & 0x02 == 0x02:
-            return "Calibration complete 0x{:02X}".format(status)
-        elif status & 0x04 == 0x04:
-            return "SG value unavailable 0x{:02X}".format(status)
-        else:
-            return "Unknown sensor status: 0x{:02X}".format(status)
         return status
+
+    @property
+    def sensorStatus(self):
+        if not self.StatusCgm:
+            return None
+        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        ret = "Unknown sensor status: 0x{:02X}".format(status)
+        if status == 0x00:
+            ret = "Sensor init cycle."
+        elif status == 0x04:
+            ret = "Sensor init till 1st calibration."
+        elif status == 0x10:
+            ret = "Sensor operational."
+        elif status == 0x14:
+            ret = "Sensor operational (high BGL)."
+
+        # value not observed so far on 640 pump
+        if status & 0x01 == 0x01:
+            ret = "{} Calibrating.".format(ret)
+        # value not observed so far on 640 pump
+        elif status & 0x02 == 0x02:
+            ret = "{} Calibration complete.".format(ret)
+
+        return ret
 
     @property
     def sensorControl(self):
