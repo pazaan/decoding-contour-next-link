@@ -387,7 +387,7 @@ class MedtronicReceiveMessage( MedtronicMessage ):
 
     @property
     def wholePayloadHex(self):
-        return binascii.hexlify(self.responsePayload).upper()
+        return binascii.hexlify(self.responsePayload).upper().decode("utf-8") 
 
 class ReadInfoResponseMessage( object ):
     @classmethod
@@ -795,7 +795,7 @@ class PumpBolusWizardCarbRatiosResponseMessage( PumpBolusWizardAbstractResponseM
 
     def StartTime(self, index):
         time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
-        return time(time_slot / 2, 30 * (time_slot % 2))
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
 
     def EndTime(self, index):
         return self.StartTime(index + 1) \
@@ -834,7 +834,7 @@ class PumpBolusWizardSensitivityFactorsResponseMessage( PumpBolusWizardAbstractR
 
     def StartTime(self, index):
         time_slot = struct.unpack(">B", self._get_record_part(index)[0x04:0x05])[0]
-        return time(time_slot / 2, 30 * (time_slot % 2))
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
 
     def EndTime(self, index):
         return self.StartTime(index + 1) \
@@ -882,7 +882,7 @@ class PumpBolusWizardBGTargetsResponseMessage( PumpBolusWizardAbstractResponseMe
 
     def StartTime(self, index):
         time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
-        return time(time_slot / 2, 30 * (time_slot % 2))
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
 
     def EndTime(self, index):
         return self.StartTime(index + 1) \

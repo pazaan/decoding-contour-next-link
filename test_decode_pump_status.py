@@ -1,10 +1,10 @@
 import unittest
-from decoding_contour_next_link \
+from .read_minimed_next24 \
     import PumpStatusResponseMessage
 
 from datetime import datetime, time
 
-from unittest_data_provider import data_provider
+from .test_helper import data_provider
 
 class TestPumpStatusDecode(unittest.TestCase):
 
@@ -58,8 +58,8 @@ class TestPumpStatusDecode(unittest.TestCase):
         testobj = PumpStatusResponseMessage()
         testobj.responsePayload = bytearray.fromhex(raw)
 
-        self.assertEquals(testobj.trendArrow, exp_arrows)
-        self.assertEquals(testobj.trendArrowValue, exp_arrows_value)
+        self.assertEqual(testobj.trendArrow, exp_arrows)
+        self.assertEqual(testobj.trendArrowValue, exp_arrows_value)
 
     data_PumpStatusResponseMessage_SensorStatusProvider = lambda: (
         (1, '02013C1000000000000000000000000000005DC02799A7623F000300001770000000000000000001220A640005E8B2190000002AF80000000000000000000000000000000000000000000000000000000000000000000000000008F4000008F4', 
@@ -83,7 +83,7 @@ class TestPumpStatusDecode(unittest.TestCase):
         testobj = PumpStatusResponseMessage()
         testobj.responsePayload = bytearray.fromhex(raw)
 
-        self.assertEquals(testobj.sensorStatus, exp_status)
+        self.assertEqual(testobj.sensorStatus, exp_status)
 
 
 if __name__ == '__main__':

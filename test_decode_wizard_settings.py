@@ -1,5 +1,5 @@
 import unittest
-from decoding_contour_next_link \
+from .read_minimed_next24 \
     import PumpBolusWizardCarbRatiosResponseMessage, PumpBolusWizardSensitivityFactorsResponseMessage, PumpBolusWizardBGTargetsResponseMessage
 
 from datetime import datetime, time
@@ -13,36 +13,36 @@ class TestBolusWizardSettingsDecode(unittest.TestCase):
         testobj = PumpBolusWizardCarbRatiosResponseMessage()
         testobj.responsePayload = example_binary
 
-        self.assertEquals(testobj.wholePayloadHex, example)
-        self.assertEquals(testobj.recordCount, 7)
+        self.assertEqual(testobj.wholePayloadHex, example)
+        self.assertEqual(testobj.recordCount, 7)
 
-        self.assertEquals(testobj.CarbRatio(0), 0.4)
-        self.assertEquals(testobj.StartTime(0), time(0, 0))
-        self.assertEquals(testobj.EndTime(0), time(5, 30))
+        self.assertEqual(testobj.CarbRatio(0), 0.4)
+        self.assertEqual(testobj.StartTime(0), time(0, 0))
+        self.assertEqual(testobj.EndTime(0), time(5, 30))
 
-        self.assertEquals(testobj.CarbRatio(1), 1.1)
-        self.assertEquals(testobj.StartTime(1), time(5, 30))
-        self.assertEquals(testobj.EndTime(1), time(8, 30))
+        self.assertEqual(testobj.CarbRatio(1), 1.1)
+        self.assertEqual(testobj.StartTime(1), time(5, 30))
+        self.assertEqual(testobj.EndTime(1), time(8, 30))
 
-        self.assertEquals(testobj.CarbRatio(2), 1.1)
-        self.assertEquals(testobj.StartTime(2), time(8, 30))
-        self.assertEquals(testobj.EndTime(2), time(9, 30))
+        self.assertEqual(testobj.CarbRatio(2), 1.1)
+        self.assertEqual(testobj.StartTime(2), time(8, 30))
+        self.assertEqual(testobj.EndTime(2), time(9, 30))
 
-        self.assertEquals(testobj.CarbRatio(3), 1.1)
-        self.assertEquals(testobj.StartTime(3), time(9, 30))
-        self.assertEquals(testobj.EndTime(3), time(11, 00))
+        self.assertEqual(testobj.CarbRatio(3), 1.1)
+        self.assertEqual(testobj.StartTime(3), time(9, 30))
+        self.assertEqual(testobj.EndTime(3), time(11, 00))
 
-        self.assertEquals(testobj.CarbRatio(4), 0.65)
-        self.assertEquals(testobj.StartTime(4), time(11, 00))
-        self.assertEquals(testobj.EndTime(4), time(15, 0))
+        self.assertEqual(testobj.CarbRatio(4), 0.65)
+        self.assertEqual(testobj.StartTime(4), time(11, 00))
+        self.assertEqual(testobj.EndTime(4), time(15, 0))
 
-        self.assertEquals(testobj.CarbRatio(5), 0.5)
-        self.assertEquals(testobj.StartTime(5), time(15, 0))
-        self.assertEquals(testobj.EndTime(5), time(18, 0))
+        self.assertEqual(testobj.CarbRatio(5), 0.5)
+        self.assertEqual(testobj.StartTime(5), time(15, 0))
+        self.assertEqual(testobj.EndTime(5), time(18, 0))
 
-        self.assertEquals(testobj.CarbRatio(6), 0.5)
-        self.assertEquals(testobj.StartTime(6), time(18, 0))
-        self.assertEquals(testobj.EndTime(6), time.max)
+        self.assertEqual(testobj.CarbRatio(6), 0.5)
+        self.assertEqual(testobj.StartTime(6), time(18, 0))
+        self.assertEqual(testobj.EndTime(6), time.max)
 
         self.assertDictEqual(testobj.FullConfiguration, {
             "count": 7,
@@ -92,33 +92,33 @@ class TestBolusWizardSettingsDecode(unittest.TestCase):
         testobj = PumpBolusWizardSensitivityFactorsResponseMessage()
         testobj.responsePayload = example_binary
 
-        self.assertEquals(testobj.wholePayloadHex, example)
-        self.assertEquals(testobj.recordCount, 5)
+        self.assertEqual(testobj.wholePayloadHex, example)
+        self.assertEqual(testobj.recordCount, 5)
 
-        self.assertEquals(testobj.FactorMgDl(0), 150)
-        self.assertEquals(testobj.FactorMmolL(0), 83)
-        self.assertEquals(testobj.StartTime(0), time(0, 0))
-        self.assertEquals(testobj.EndTime(0), time(6, 00))
+        self.assertEqual(testobj.FactorMgDl(0), 150)
+        self.assertEqual(testobj.FactorMmolL(0), 83)
+        self.assertEqual(testobj.StartTime(0), time(0, 0))
+        self.assertEqual(testobj.EndTime(0), time(6, 00))
 
-        self.assertEquals(testobj.FactorMgDl(1), 120)
-        self.assertEquals(testobj.FactorMmolL(1), 67)
-        self.assertEquals(testobj.StartTime(1), time(6, 00))
-        self.assertEquals(testobj.EndTime(1), time(10, 00))
+        self.assertEqual(testobj.FactorMgDl(1), 120)
+        self.assertEqual(testobj.FactorMmolL(1), 67)
+        self.assertEqual(testobj.StartTime(1), time(6, 00))
+        self.assertEqual(testobj.EndTime(1), time(10, 00))
 
-        self.assertEquals(testobj.FactorMgDl(2), 100)
-        self.assertEquals(testobj.FactorMmolL(2), 56)
-        self.assertEquals(testobj.StartTime(2), time(10, 00))
-        self.assertEquals(testobj.EndTime(2), time(18, 00))
+        self.assertEqual(testobj.FactorMgDl(2), 100)
+        self.assertEqual(testobj.FactorMmolL(2), 56)
+        self.assertEqual(testobj.StartTime(2), time(10, 00))
+        self.assertEqual(testobj.EndTime(2), time(18, 00))
 
-        self.assertEquals(testobj.FactorMgDl(3), 120)
-        self.assertEquals(testobj.FactorMmolL(3), 67)
-        self.assertEquals(testobj.StartTime(3), time(18, 00))
-        self.assertEquals(testobj.EndTime(3), time(23, 00))
+        self.assertEqual(testobj.FactorMgDl(3), 120)
+        self.assertEqual(testobj.FactorMmolL(3), 67)
+        self.assertEqual(testobj.StartTime(3), time(18, 00))
+        self.assertEqual(testobj.EndTime(3), time(23, 00))
 
-        self.assertEquals(testobj.FactorMgDl(4), 140)
-        self.assertEquals(testobj.FactorMmolL(4), 78)
-        self.assertEquals(testobj.StartTime(4), time(23, 00))
-        self.assertEquals(testobj.EndTime(4), time.max)
+        self.assertEqual(testobj.FactorMgDl(4), 140)
+        self.assertEqual(testobj.FactorMmolL(4), 78)
+        self.assertEqual(testobj.StartTime(4), time(23, 00))
+        self.assertEqual(testobj.EndTime(4), time.max)
 
         self.assertDictEqual(testobj.FullConfiguration, {
             "count": 5,
@@ -163,36 +163,36 @@ class TestBolusWizardSettingsDecode(unittest.TestCase):
         testobj = PumpBolusWizardBGTargetsResponseMessage()
         testobj.responsePayload = example_binary
 
-        self.assertEquals(testobj.wholePayloadHex, example)
-        self.assertEquals(testobj.recordCount, 4)
+        self.assertEqual(testobj.wholePayloadHex, example)
+        self.assertEqual(testobj.recordCount, 4)
 
-        self.assertEquals(testobj.LowTargetMgDl(0), 90)
-        self.assertEquals(testobj.HighTargetMgDl(0), 120)
-        self.assertEquals(testobj.LowTargetMmolL(0), 50)
-        self.assertEquals(testobj.HighTargetMmolL(0), 67)
-        self.assertEquals(testobj.StartTime(0), time(0, 0))
-        self.assertEquals(testobj.EndTime(0), time(5, 00))
+        self.assertEqual(testobj.LowTargetMgDl(0), 90)
+        self.assertEqual(testobj.HighTargetMgDl(0), 120)
+        self.assertEqual(testobj.LowTargetMmolL(0), 50)
+        self.assertEqual(testobj.HighTargetMmolL(0), 67)
+        self.assertEqual(testobj.StartTime(0), time(0, 0))
+        self.assertEqual(testobj.EndTime(0), time(5, 00))
 
-        self.assertEquals(testobj.LowTargetMgDl(1), 80)
-        self.assertEquals(testobj.HighTargetMgDl(1), 120)
-        self.assertEquals(testobj.LowTargetMmolL(1), 44)
-        self.assertEquals(testobj.HighTargetMmolL(1), 67)
-        self.assertEquals(testobj.StartTime(1), time(5, 0))
-        self.assertEquals(testobj.EndTime(1), time(8, 00))
+        self.assertEqual(testobj.LowTargetMgDl(1), 80)
+        self.assertEqual(testobj.HighTargetMgDl(1), 120)
+        self.assertEqual(testobj.LowTargetMmolL(1), 44)
+        self.assertEqual(testobj.HighTargetMmolL(1), 67)
+        self.assertEqual(testobj.StartTime(1), time(5, 0))
+        self.assertEqual(testobj.EndTime(1), time(8, 00))
 
-        self.assertEquals(testobj.LowTargetMgDl(2), 80)
-        self.assertEquals(testobj.HighTargetMgDl(2), 120)
-        self.assertEquals(testobj.LowTargetMmolL(2), 44)
-        self.assertEquals(testobj.HighTargetMmolL(2), 67)
-        self.assertEquals(testobj.StartTime(2), time(8, 0))
-        self.assertEquals(testobj.EndTime(2), time(18, 00))
+        self.assertEqual(testobj.LowTargetMgDl(2), 80)
+        self.assertEqual(testobj.HighTargetMgDl(2), 120)
+        self.assertEqual(testobj.LowTargetMmolL(2), 44)
+        self.assertEqual(testobj.HighTargetMmolL(2), 67)
+        self.assertEqual(testobj.StartTime(2), time(8, 0))
+        self.assertEqual(testobj.EndTime(2), time(18, 00))
 
-        self.assertEquals(testobj.LowTargetMgDl(3), 90)
-        self.assertEquals(testobj.HighTargetMgDl(3), 120)
-        self.assertEquals(testobj.LowTargetMmolL(3), 50)
-        self.assertEquals(testobj.HighTargetMmolL(3), 67)
-        self.assertEquals(testobj.StartTime(3), time(18, 0))
-        self.assertEquals(testobj.EndTime(3), time.max)
+        self.assertEqual(testobj.LowTargetMgDl(3), 90)
+        self.assertEqual(testobj.HighTargetMgDl(3), 120)
+        self.assertEqual(testobj.LowTargetMmolL(3), 50)
+        self.assertEqual(testobj.HighTargetMmolL(3), 67)
+        self.assertEqual(testobj.StartTime(3), time(18, 0))
+        self.assertEqual(testobj.EndTime(3), time.max)
 
         self.assertDictEqual(testobj.FullConfiguration, {
             "count": 4,
