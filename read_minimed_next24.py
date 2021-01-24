@@ -21,6 +21,7 @@ import pickle # needed for local history export
 import lzo # pip install python-lzo
 from .pump_history_parser import NGPHistoryEvent, BloodGlucoseReadingEvent
 from .helpers import DateTimeHelper
+from datetime import time, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +334,11 @@ class MedtronicSendMessage( MedtronicMessage ):
         self.session.sendSequenceNumber += 1
 
 class MedtronicReceiveMessage( MedtronicMessage ):
+
+    def __init__( self, session=None, responsePayload=None ):
+        MedtronicMessage.__init__( self, session=session )
+        self.responsePayload = responsePayload
+    
     @classmethod
     def decode( cls, message, session ):
         response = MedtronicMessage.decode( message, session )
@@ -366,6 +372,12 @@ class MedtronicReceiveMessage( MedtronicMessage ):
             response.__class__ = MultiPacketSegment
         elif response.messageType == COM_D_COMMAND.END_HISTORY_TRANSMISSION:
             response.__class__ = MultiPacketSegment
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            response.__class__ = PumpBolusWizardCarbRatiosResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_RESPONSE:
+            response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
+        elif response.messageType == COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_RESPONSE:
+            response.__class__ = PumpBolusWizardBGTargetsResponseMessage        
         
         return response
 
@@ -373,6 +385,9 @@ class MedtronicReceiveMessage( MedtronicMessage ):
     def messageType( self ):
         return struct.unpack( '>H', self.responsePayload[1:3] )[0]
 
+    @property
+    def wholePayloadHex(self):
+        return binascii.hexlify(self.responsePayload).upper().decode("utf-8") 
 
 class ReadInfoResponseMessage( object ):
     @classmethod
@@ -561,24 +576,105 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
         return int( struct.unpack( '>H', self.responsePayload[0x35:0x37] )[0] )
 
     @property
-    def trendArrow( self ):
-        status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
-        if status == 0x60:
-            return "No arrows"
-        elif status == 0xc0:
-            return "3 arrows up"
-        elif status == 0xa0:
-            return "2 arrows up"
-        elif status == 0x80:
-            return "1 arrow up"
-        elif status == 0x40:
-            return "1 arrow down"
-        elif status == 0x20:
-            return "2 arrows down"
-        elif status == 0x00:
-            return "3 arrows down"
+    def trendArrowValue(self):
+        if self.StatusCgm:
+            status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+            if status & 0xF0 == 0x60:
+                return 0
+            elif status & 0xF0 == 0xc0:
+                return 3
+            elif status & 0xF0 == 0xa0:
+                return 2
+            elif status & 0xF0 == 0x80:
+                return 1
+            elif status & 0xF0 == 0x40:
+                return -1
+            elif status & 0xF0 == 0x20:
+                return -2
+            elif status & 0xF0 == 0x00:
+                return -3
+            else:
+                return None
         else:
-            return "Unknown trend"
+            return None
+
+    @property
+    def trendArrow( self ):
+        if self.StatusCgm:
+            status = int( struct.unpack( '>B', self.responsePayload[0x40:0x41] )[0] )
+            if status & 0xF0 == 0x60:
+                return "No arrows"
+            elif status & 0xF0 == 0xc0:
+                return "3 arrows up"
+            elif status & 0xF0 == 0xa0:
+                return "2 arrows up"
+            elif status & 0xF0 == 0x80:
+                return "1 arrow up"
+            elif status & 0xF0 == 0x40:
+                return "1 arrow down"
+            elif status & 0xF0 == 0x20:
+                return "2 arrows down"
+            elif status & 0xF0 == 0x00:
+                return "3 arrows down"
+            elif status & 0xF0 == 0xE0:
+                return "Unknown trend"
+        else:
+            return None
+
+    @property
+    def sensorRateOfChangePerMin(self):
+        status = float(struct.unpack('>h', self.responsePayload[0x46:0x48])[0]) / 100
+        return status
+
+    @property
+    def sensorStatusValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        return status
+
+    @property
+    def sensorStatus(self):
+        if not self.StatusCgm:
+            return None
+        status = int(struct.unpack('>B', self.responsePayload[0x41:0x42])[0])
+        ret = "Unknown sensor status: 0x{:02X}".format(status)
+        if status == 0x00:
+            ret = "Sensor init cycle."
+        elif status == 0x04:
+            ret = "Sensor not calibrated."
+        elif status == 0x10:
+            ret = "Sensor operational."
+        elif status == 0x14:
+            ret = "Sensor operational (high BGL)."
+
+        # value not observed so far on 640 pump
+        if status & 0x01 == 0x01:
+            ret = "{} Calibrating.".format(ret)
+        # value not observed so far on 640 pump
+        elif status & 0x02 == 0x02:
+            ret = "{} Calibration complete.".format(ret)
+
+        return ret
+
+    @property
+    def sensorControl(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x42:0x43])[0])
+        return "0x{0:02X} ({0:08b})".format(status)
+        return status
+
+    @property
+    def sensorControlValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x42:0x43])[0])
+        return status
+
+    @property
+    def sensorCalibrationMinutesRemaining(self):
+        minutes = int(struct.unpack('>H', self.responsePayload[0x43:0x45])[0])
+        return minutes
+
+    @property
+    def sensorBatteryPercent(self):
+        battery_percent = 100 * (0x0F & int(struct.unpack('>B', self.responsePayload[0x45:0x46])[0])) / 0x0F
+        return battery_percent
 
     @property
     def sensorBGLTimestamp( self ):
@@ -594,7 +690,215 @@ class PumpStatusResponseMessage( MedtronicReceiveMessage ):
 
     @property
     def bolusWizardBGL( self ):
-        return struct.unpack( '>H', self.responsePayload[73:75] )[0]
+        return struct.unpack( '>H', self.responsePayload[0x49:0x4B] )[0]
+
+    @property
+    def StatusValue(self):
+        status = int(struct.unpack('>B', self.responsePayload[0x03:0x04])[0])
+        return status
+
+    @property
+    def StatusCgm(self):
+        return self.StatusValue & 0x40 != 0
+
+    @property
+    def StatusTempBasal(self):
+        return self.StatusValue & 0x20 != 0
+
+    @property
+    def StatusInsulinDelivery(self):
+        return self.StatusValue & 0x10 != 0
+
+    @property
+    def StatusBolusingDual(self):
+        return self.StatusValue & 0x08 != 0
+
+    @property
+    def StatusBolusingSquare(self):
+        return self.StatusValue & 0x04 != 0
+
+    @property
+    def StatusBolusingNormal(self):
+        return self.StatusValue & 0x02 != 0
+
+    @property
+    def StatusSuspended(self):
+        return self.StatusValue & 0x01 != 0
+
+    @property
+    def Status(self):
+        status = {
+            "CGM Active": self.StatusCgm,
+            "Temp basal active": self.StatusTempBasal,
+            "Insulin delivery": self.StatusInsulinDelivery,
+            "Bolusing dual": self.StatusBolusingDual,
+            "Bolusing square": self.StatusBolusingSquare,
+            "Bolusing normal": self.StatusBolusingNormal,
+            "Suspended": self.StatusSuspended,
+        }
+        return status
+
+    @property
+    def lastBolusAmount( self ):
+        return float( struct.unpack( '>I', self.responsePayload[0x10:0x14] )[0] ) / 10000
+
+    @property
+    def lastBolusTimestamp( self ):
+        dateTimeData = struct.unpack( '>L', self.responsePayload[0x14:0x18])[0]
+        return DateTimeHelper.decodeDateTime( dateTimeData, 0 )
+
+class PumpBolusWizardAbstractResponseMessage( MedtronicReceiveMessage ):
+
+    @classmethod
+    def get_record_size(cls):
+        pass
+
+    def getRecord(self, i):
+        pass
+
+    @property
+    def recordCount(self):
+        count = struct.unpack( '>B', self.responsePayload[0x05:0x06] )[0]
+        return count
+
+    def _get_record_part(self, index):
+        return self.responsePayload[0x06 + index * self.get_record_size():0x06 + (index + 1) * self.get_record_size()]    
+
+    @property
+    def FullConfiguration(self):
+        return {
+            "count": self.recordCount,
+            "records": [
+                self.getRecord(i) for i in range(0, self.recordCount)
+            ]
+        }
+
+
+class PumpBolusWizardCarbRatiosResponseMessage( PumpBolusWizardAbstractResponseMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardCarbRatiosResponseMessage
+        return response
+
+    @classmethod
+    def get_record_size(cls):
+        return 9
+    
+    def CarbRatio(self, index):
+        ratio = float(struct.unpack(">H", self._get_record_part(index)[0x06:0x08])[0]) / 1000
+        return ratio
+
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "ratio": self.CarbRatio(i)
+        }
+
+class PumpBolusWizardSensitivityFactorsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardSensitivityFactorsResponseMessage
+        return response
+
+    @classmethod
+    def get_record_size(cls):
+        return 5
+    
+    def FactorMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x00:0x02])[0]
+        return factor
+
+    def FactorMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x02:0x04])[0]
+        return factor
+
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x04:0x05])[0]
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "factorMgDl": self.FactorMgDl(i),
+            "factorMmolL": self.FactorMmolL(i),
+        }
+
+class PumpBolusWizardBGTargetsResponseMessage( PumpBolusWizardAbstractResponseMessage ):
+    @classmethod
+    def decode( cls, message, session ):
+        response = MedtronicReceiveMessage.decode( message, session )
+        if response.messageType != COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE:
+            raise UnexpectedMessageException( "Expected to get a Carb Ratios Response message '{0}'. Got {1}.".format( COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE, response.messageType ) )
+
+        # Since we only add behaviour, we can cast this class to ourselves
+        response.__class__ = PumpBolusWizardBGTargetsResponseMessage
+        return response
+
+    @classmethod
+    def get_record_size(cls):
+        return 9
+    
+    def LowTargetMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x04:0x06])[0]
+        return factor
+
+    def LowTargetMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x06:0x08])[0]
+        return factor
+
+    def HighTargetMgDl(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x00:0x02])[0]
+        return factor
+
+    def HighTargetMmolL(self, index):
+        factor = struct.unpack(">H", self._get_record_part(index)[0x02:0x04])[0]
+        return factor
+
+    def StartTime(self, index):
+        time_slot = struct.unpack(">B", self._get_record_part(index)[0x08:0x09])[0]
+        return time(int(time_slot / 2), 30 * (time_slot % 2))
+
+    def EndTime(self, index):
+        return self.StartTime(index + 1) \
+            if index + 1 != self.recordCount \
+                else time.max
+
+    def getRecord(self, i):
+        return {
+            "starttime": self.StartTime(i),
+            "endtime": self.EndTime(i),
+            "lowTargetMgDl": self.LowTargetMgDl(i),
+            "lowTargetMmolL": self.LowTargetMmolL(i),
+            "highTargetMgDl": self.HighTargetMgDl(i),
+            "highTargetMmolL": self.HighTargetMmolL(i),
+        }
+
 
 class BeginEHSMMessage( MedtronicSendMessage ):
     def __init__( self, session ):
@@ -613,6 +917,18 @@ class PumpTimeRequestMessage( MedtronicSendMessage ):
 class PumpStatusRequestMessage( MedtronicSendMessage ):
     def __init__( self, session ):
         MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_PUMP_STATUS_REQUEST, session )
+
+class PumpBolusWizardCarbRatiosRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_REQUEST, session )
+
+class PumpBolusWizardSensitivityFactorsRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_REQUEST, session )
+
+class PumpBolusWizardBGTargetsRequestMessage( MedtronicSendMessage ):
+    def __init__( self, session ):
+        MedtronicSendMessage.__init__( self, COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_REQUEST, session )
 
 class PumpHistoryInfoRequestMessage( MedtronicSendMessage ):
     def __init__( self, session, dateStart, dateEnd, dateOffset, requestType = HISTORY_DATA_TYPE.PUMP_DATA):
@@ -1221,6 +1537,11 @@ class Medtronic600SeriesDriver( object ):
         return result
 
     def getPumpStatus( self ):
+        """Get current pump status
+
+        :return: response object
+        :rtype: PumpStatusResponseMessage
+        """
         logger.info("# Get Pump Status")
         mtMessage = PumpStatusRequestMessage( self.session )
 
@@ -1228,6 +1549,71 @@ class Medtronic600SeriesDriver( object ):
         self.sendMessage( bayerMessage.encode() )
         self.readResponse0x81()
         response = self.getMedtronicMessage([COM_D_COMMAND.READ_PUMP_STATUS_RESPONSE])
+        return response
+
+    def getBolusWizardCarbRatios( self ):
+        """Get bolus wizard carb ratios settings
+
+        :return: response object
+        :rtype: PumpBolusWizardCarbRatiosResponseMessage
+        """
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
+        return response
+
+    def getBolusWizardSensitivityFactors( self ):
+        """Get bolus wizard sensitivity factors settings
+
+        :return: response object
+        :rtype: PumpBolusWizardSensitivityFactorsResponseMessage
+        """
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardSensitivityFactorsRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_SENSITIVITY_FACTORS_RESPONSE])
+        return response
+
+    def getBolusWizardBGTargets( self ):
+        """Get bolus wizard BG targets settings
+
+        :return: response object
+        :rtype: PumpBolusWizardBGTargetsResponseMessage
+        """
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardBGTargetsRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_BG_TARGETS_RESPONSE])
+        return response
+
+    def getBolusWizardCarbRatios( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
+        return response
+
+    def getBolusWizardCarbRatios( self ):
+        logger.info("# Get Pump Status")
+        mtMessage = PumpBolusWizardCarbRatiosRequestMessage( self.session )
+
+        bayerMessage = BayerBinaryMessage( 0x12, self.session, mtMessage.encode() )
+        self.sendMessage( bayerMessage.encode() )
+        self.readResponse0x81()
+        response = self.getMedtronicMessage([COM_D_COMMAND.READ_BOLUS_WIZARD_CARB_RATIOS_RESPONSE])
         return response
 
     def getPumpHistoryInfo( self, dateStart, dateEnd, requestType = HISTORY_DATA_TYPE.PUMP_DATA ):
@@ -1500,6 +1886,11 @@ def downloadPumpSession(downloadOperations):
         mt.closeDevice()
 
 def pumpDownload(mt):
+    """demo pump download routine
+
+    :param mt: driver reference
+    :type mt: Medtronic600SeriesDriver
+    """
     status = mt.getPumpStatus()
     print (binascii.hexlify( status.responsePayload ))
     print ("Active Insulin: {0:.3f}U".format( status.activeInsulin ))
@@ -1512,7 +1903,19 @@ def pumpDownload(mt):
     print ("Temp basal percentage: {0}%".format( status.tempBasalPercentage ))
     print ("Units remaining: {0:.3f}U".format( status.insulinUnitsRemaining ))
     print ("Battery remaining: {0}%".format( status.batteryLevelPercentage ))
-    
+
+    carbratios = mt.getBolusWizardCarbRatios()
+    print("Carb ratios:")
+    print(carbratios.wholePayloadHex)
+
+    sensfactors = mt.getBolusWizardSensitivityFactors()
+    print("Sensitivity factors:")
+    print(sensfactors.wholePayloadHex)
+
+    bgtargets = mt.getBolusWizardBGTargets()
+    print("BG Targets")
+    print(bgtargets.wholePayloadHex)
+
     print ("Getting Pump history info")
     start_date = datetime.datetime.now() - datetime.timedelta(days=1)
     historyInfo = mt.getPumpHistoryInfo(start_date, datetime.datetime.max, HISTORY_DATA_TYPE.PUMP_DATA)

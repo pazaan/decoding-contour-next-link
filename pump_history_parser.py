@@ -792,7 +792,6 @@ class InsulinDeliveryStoppedEvent(NGPHistoryEvent):
 
     @property
     def suspendReasonText(self):
-        #See NGPUtil.NGPConstants.SUSPEND_REASON        
         return NGPConstants.SUSPEND_REASON_NAME[self.suspendReason]
 
     
@@ -811,7 +810,6 @@ class InsulinDeliveryRestartedEvent(NGPHistoryEvent):
 
     @property
     def resumeReasonText(self):
-        #See NGPUtil.NGPConstants.SUSPEND_REASON        
         return NGPConstants.RESUME_REASON_NAME[self.resumeReason]
 
 class PLGMControllerStateEvent(NGPHistoryEvent):
@@ -857,3 +855,77 @@ class StartOfDayMarkerEvent(NGPHistoryEvent):
 class EndOfDayMarkerEvent(NGPHistoryEvent):
     def __str__(self):
         return '{0}'.format(NGPHistoryEvent.__str__(self))
+
+class TempBasalEvent(NGPHistoryEvent):
+    def __init__(self, eventData):
+        NGPHistoryEvent.__init__(self, eventData)
+
+    def __str__(self):
+        return ("{0} Preset:{1} {2}, "
+                "Type: {3} {4}, "
+                "percent: {5}, "
+                "fixed rate: {6}, "
+                "duration: {7} min."
+                ).format(NGPHistoryEvent.__shortstr__(self), 
+                         self.presetNumber, 
+                         self.presetName,
+                         self.type,
+                         self.typeName,
+                         self.percent,
+                         self.fixedRate,
+                         self.programmedDurationMin
+                         )
+        
+    @property
+    def presetNumber(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x0B)
+
+    @property
+    def presetName(self):
+        return NGPConstants.TEMP_BASAL_PRESET_NAME[self.presetNumber];
+
+    @property
+    def type(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x0C)
+
+    @property
+    def typeName(self):
+        return "PERCENT" if self.type == NGPConstants.TEMP_BASAL_TYPE.PERCENT else "ABSOLUTE"
+
+    @property
+    def fixedRate(self):
+        return BinaryDataDecoder.readUInt32BE(self.eventData, 0x0D) / 10000.0
+
+    @property
+    def percent(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x11)
+
+    @property
+    def programmedDurationMin(self):
+        return BinaryDataDecoder.readUInt16BE(self.eventData, 0x12)
+
+class TempBasalStartEvent(TempBasalEvent):
+    def __init__(self, eventData):
+        TempBasalEvent.__init__(self, eventData)
+
+class TempBasalEndEvent(TempBasalEvent):
+    def __init__(self, eventData):
+        TempBasalEvent.__init__(self, eventData)
+
+    def __str__(self):
+        return ("{0}, "
+                "Real duration: {1} min., "
+                "Unknown: {2}"
+                ).format(TempBasalEvent.__str__(self), 
+                         self.realDurationMin, 
+                         self.unknown
+                         )
+
+    @property
+    def unknown(self):
+        return BinaryDataDecoder.readByte(self.eventData, 0x14)
+
+    @property
+    def realDurationMin(self):
+        return BinaryDataDecoder.readUInt16BE(self.eventData, 0x15)
+    

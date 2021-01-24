@@ -239,7 +239,7 @@ KR = last bolus reference
 SS = sensor status
 SU = sensor control?
 SC = sensor calibration minutes remaining
-SB = sensor battery
+SB = sensor battery (4 youngest bits)
 SX = sensor rate of change (div 100)
 
 SM = sensor mode active (incs each on and each off, if bit 0 is set then on)
@@ -303,7 +303,8 @@ Sensor/Transmitter:
 
 [SU] 8bit  = ?
 [SC] 16bit = time remaining to next calibration in minutes (720 mins max count, FFFF = unknown)
-[SB] 8bit  = ? unconfirmed as transmitter battery (0x3F 100% ... 0x27 47% . 0x23 20%)
+[SB] 8bit  = 4 youngest bits represent the sensor battery 0x0f = 100%. (0x3F & 0x0F = 0x0F = 100%, 0x27 & 0x0F = 0x07 = 47%, 0x23 & 0x0F = 0x03 = 20%)
+             bit 5 seems always set. bit 4 is only set with 100%.
 [SX] 16bit = isig rate of change? relates to use for trend arrows? (/100 for decimal value) (RATE_OF_CHANGE value in Carelink)
 
 sensor warm-up noted:
@@ -322,3 +323,11 @@ sensor warm-up noted:
 [SM] and [SN] always mirror each other
 
 ----------------------------------------------------------
+
+
+Carb ratios:
+03012C2E7007000000000000019000000000000000044C0B000000000000044C11000000000000044C13000000000000028A1600000000000001F41E00000000000001F424
+Sensitivity factors:
+04012F1AB7050096005300007800430C00640038140078004324008C004E2E
+BG Targets
+050132D1E10400780043005A003200007800430050002C0A007800430050002C1000780043005A003224
