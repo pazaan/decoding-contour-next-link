@@ -624,7 +624,7 @@ class DualBolusProgrammedEvent(BolusProgrammedEvent):
         BolusProgrammedEvent.__init__(self, eventData)
         
     def __str__(self):
-        return '{0} ProgImmediate:{1}, ProgSquare:{2}, Duration:{3}, Active:{4}, Wizard: {5}'.format(BolusProgrammedEvent.__shortstr__(self), 
+        return '{0} ProgImmediate:{1}, ProgSquare:{2}, ProgDuration:{3}, Active:{4}, Wizard: {5}'.format(BolusProgrammedEvent.__shortstr__(self), 
                                                               self.programmedAmountImmediate, 
                                                               self.programmedAmountSquare, 
                                                               self.programmedDurationInMinutes, 
