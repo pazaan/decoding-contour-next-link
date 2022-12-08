@@ -1,5 +1,5 @@
 astm==0.5.0
-certifi==2017.7.27.1
+certifi==2022.12.7
 chardet==3.0.4
 crc16==0.1.1
 hidapi>=0.7.99.post20
